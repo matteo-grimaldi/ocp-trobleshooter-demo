@@ -1,0 +1,27 @@
+---
+# ServiceAccount for the agent pod
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ocp-troubleshooter-sa
+  namespace: coding-assistant
+  labels:
+    app: ocp-troubleshooter
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+---
+# ClusterRoleBinding — allows querying Prometheus / Thanos (all namespaces)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ocp-troubleshooter-monitoring-view
+  labels:
+    app: ocp-troubleshooter
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+subjects:
+  - kind: ServiceAccount
+    name: ocp-troubleshooter-sa
+    namespace: coding-assistant

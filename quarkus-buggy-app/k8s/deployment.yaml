@@ -1,0 +1,96 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buggy-demo-app
+  namespace: demo-app
+  labels:
+    app: buggy-demo-app
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+    app.kubernetes.io/name: buggy-demo-app
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: buggy-demo-app
+  template:
+    metadata:
+      labels:
+        app: buggy-demo-app
+        app.kubernetes.io/name: buggy-demo-app
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      containers:
+        - name: buggy-demo-app
+          # Image pushed to OpenShift internal registry via:
+          # ./mvnw package -Dquarkus.container-image.build=true -Dquarkus.container-image.push=true
+          image: image-registry.openshift-image-registry.svc:5000/demo-app/buggy-demo-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: QUARKUS_HTTP_PORT
+              value: "8080"
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: buggy-demo-app
+  namespace: demo-app
+  labels:
+    app: buggy-demo-app
+    app.kubernetes.io/name: buggy-demo-app
+  annotations:
+    # Tells Prometheus which port has metrics
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/q/metrics"
+    prometheus.io/port: "8080"
+spec:
+  selector:
+    app: buggy-demo-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: buggy-demo-app
+  namespace: demo-app
+  labels:
+    app: buggy-demo-app
+spec:
+  to:
+    kind: Service
+    name: buggy-demo-app
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -1,0 +1,21 @@
+---
+# ServiceMonitor tells the Prometheus Operator to scrape the Quarkus app metrics.
+# Requires user workload monitoring to be enabled in the cluster (already done).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: buggy-demo-app
+  namespace: demo-app
+  labels:
+    app: buggy-demo-app
+    # This label is required so the user-workload Prometheus picks it up
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+spec:
+  selector:
+    matchLabels:
+      app: buggy-demo-app
+  endpoints:
+    - port: http
+      path: /q/metrics
+      interval: 15s
+      scheme: http

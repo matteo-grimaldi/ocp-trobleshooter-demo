@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app
+  labels:
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+    # Enable user workload monitoring so Prometheus scrapes this namespace
+    openshift.io/cluster-monitoring: "false"

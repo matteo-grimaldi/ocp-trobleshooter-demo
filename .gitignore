@@ -1,0 +1,23 @@
+# Build artifacts
+quarkus-buggy-app/target/
+
+# Editor swap/temp files
+*.swp
+*.swo
+*~
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
