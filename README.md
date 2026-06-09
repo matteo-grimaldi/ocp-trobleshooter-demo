@@ -117,6 +117,7 @@ A Python LangChain ReAct agent with a Gradio web UI.
 **Tools available to the agent:**
 - **OpenShift MCP tools** (via `langchain-mcp-adapters`) — pods, deployments, events, logs
 - `query_prometheus(promql)` — instant PromQL query against Thanos Querier
+- **Ticketing MCP tools** — `create_incident`, `list_incidents`, `get_incident`, `update_incident`, `add_work_note`
 - `query_prometheus_range(promql, duration_minutes)` — range query with min/avg/max summary
 
 **LLM:** Nemotron 3 Nano 30B via `https://<your-maas-endpoint>`
@@ -416,6 +417,7 @@ ocp-troubleshooter-demo/
 | `NEMOTRON_MODEL` | `nemotron-3-nano-30b-a3b` | Model name |
 | `NEMOTRON_API_KEY` | `fake` | API key (MaaS uses bearer token auth internally) |
 | `PROMETHEUS_TOKEN` | *(SA token from mount)* | Override bearer token for Prometheus |
+| `TICKETING_MCP_URL` | `http://ticketing-mcp-server.coding-assistant.svc:8080/mcp` | Ticketing MCP server URL |
 | `GRADIO_PORT` | `7860` | Gradio server port |
 
 ### Ticketing System
