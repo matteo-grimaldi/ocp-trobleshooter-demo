@@ -9,15 +9,15 @@ It combines **Nemotron 3 Nano 30B** (via the cluster's MaaS gateway), the **Open
 
 ```
 User / Browser
-     │  chat
-     ▼
-┌──────────────────────────────┐
-│  AI Agent  (Gradio UI)       │   coding-assistant namespace
-│  LangChain ReAct + LangGraph │
-└──────┬───────────┬───────────┘
-       │           │
-       │ OpenAI    │ MCP tools      PromQL
-       ▼           ▼                  ▼
+     │  chat                          │  dashboard
+     ▼                                ▼
+┌──────────────────────────────┐  ┌──────────────────────────┐
+│  AI Agent  (Gradio UI)       │  │  Ticketing System        │
+│  LangChain ReAct + LangGraph │  │  (ServiceNow Simulator)  │
+└──────┬───────────┬───────────┘  └──────────────────────────┘
+       │           │                  ▲
+       │ OpenAI    │ MCP tools        │ POST /api/incidents
+       ▼           ▼                  │
   Nemotron     OpenShift MCP      Thanos Querier
   3 Nano 30B   server (k8s API)   (openshift-monitoring)
   (MaaS)
@@ -49,7 +49,38 @@ A Quarkus 3 REST microservice with intentional, randomly-triggered failures:
 - Exposes `/q/health` (SmallRye Health liveness + readiness)
 - Includes a `TrafficGenerator` that calls all endpoints every 5 seconds to produce continuous metrics
 
-### 2. AI Troubleshooter Agent (`ai-agent/`)
+### 2. Ticketing System (`ticketing-system/`)
+
+A lightweight **ServiceNow Table API simulator** for incident management. Provides a REST API that mimics ServiceNow's `incident` table, backed by SQLite.
+
+**API endpoints:**
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/incidents` | Create a new incident |
+| `GET` | `/api/incidents` | List incidents (filter by `state`, `category`, `priority`) |
+| `GET` | `/api/incidents/{number}` | Get a single incident with work notes |
+| `PATCH` | `/api/incidents/{number}` | Update incident fields (state, priority, assignment, etc.) |
+| `POST` | `/api/incidents/{number}/notes` | Add a work note to an incident |
+| `GET` | `/` | HTML dashboard showing all incidents |
+| `GET` | `/health` | Health check |
+
+**Incident fields** (ServiceNow-compatible):
+
+| Field | Example | Description |
+|---|---|---|
+| `number` | `INC0000001` | Auto-generated incident ID |
+| `state` | `New` | New / In Progress / On Hold / Resolved / Closed |
+| `impact` | `1` | 1 (High) / 2 (Medium) / 3 (Low) |
+| `urgency` | `2` | 1 (High) / 2 (Medium) / 3 (Low) |
+| `priority` | `2` | Auto-calculated from impact + urgency (1-5) |
+| `short_description` | `High error rate on /api/products` | Brief summary |
+| `description` | *(full diagnosis)* | Detailed report body |
+| `category` | `Application` | Application / Infrastructure / Network / Database |
+| `caller_id` | `ocp-troubleshooter` | Who reported the incident |
+| `opened_at` | `2025-01-15 07:00:00` | Creation timestamp (UTC) |
+
+### 3. AI Troubleshooter Agent (`ai-agent/`)
 
 A Python LangChain ReAct agent with a Gradio web UI.
 
@@ -104,7 +135,38 @@ oc get route buggy-demo-app -n demo-app
 Wait ~30 seconds for the app to start generating errors.  
 Visit the Route URL to hit the endpoints manually.
 
-### Step 2 — Deploy the AI Agent
+### Step 2 — Deploy the Ticketing System
+
+```bash
+cd ticketing-system
+
+# Build and push the image to the OpenShift internal registry
+REGISTRY_HOST=$(oc get route default-route -n openshift-image-registry \
+  -o jsonpath='{.spec.host}')
+podman build --platform linux/amd64 \
+  -t "${REGISTRY_HOST}/coding-assistant/ticketing-system:latest" .
+podman push --tls-verify=false \
+  "${REGISTRY_HOST}/coding-assistant/ticketing-system:latest"
+
+# Deploy
+oc apply -f k8s/deployment.yaml
+oc apply -f k8s/route.yaml
+
+# Verify
+oc get pods -n coding-assistant | grep ticketing
+oc get route ticketing-system -n coding-assistant
+```
+
+Or use the all-in-one script:
+
+```bash
+cd ticketing-system
+./build-and-deploy.sh
+```
+
+Open the Route URL in a browser to see the incident dashboard.
+
+### Step 3 — Deploy the AI Agent
 
 ```bash
 cd ai-agent
@@ -129,7 +191,7 @@ oc get pods -n coding-assistant | grep troubleshooter
 oc get route ocp-troubleshooter -n coding-assistant
 ```
 
-### Step 3 — Run the Demo
+### Step 4 — Run the Demo
 
 1. Open the agent Route URL in a browser.
 2. Use one of the quick-start example prompts, e.g.:
@@ -177,9 +239,38 @@ Get the last 50 lines of logs from the buggy-demo-app pod in demo-app
 and explain what errors you see.
 ```
 
+### Scene 4 — Ticketing System API
+
+Create an incident manually via the REST API:
+
+```bash
+TICKETING_URL=$(oc get route ticketing-system -n coding-assistant \
+  -o jsonpath='https://{.spec.host}')
+
+# Create an incident
+curl -s -X POST "${TICKETING_URL}/api/incidents" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "short_description": "High 5xx error rate on /api/products",
+    "description": "30% of requests to /api/products return HTTP 500 due to NullPointerException in ProductResource.java",
+    "impact": 1,
+    "urgency": 2,
+    "category": "Application",
+    "caller_id": "ocp-troubleshooter"
+  }' | python3 -m json.tool
+
+# List all incidents
+curl -s "${TICKETING_URL}/api/incidents" | python3 -m json.tool
+
+# Open the dashboard in a browser
+open "${TICKETING_URL}"
+```
+
 ---
 
-## Local Development (Agent Only)
+## Local Development
+
+### Agent
 
 ```bash
 cd ai-agent
@@ -195,6 +286,19 @@ export NEMOTRON_BASE_URL=https://<your-maas-endpoint>/maas/nemotron-3-nano-30b-a
 
 python app.py
 # Open http://localhost:7860
+```
+
+### Ticketing System
+
+```bash
+cd ticketing-system
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+uvicorn app:app --host 0.0.0.0 --port 8080 --reload
+# Dashboard: http://localhost:8080
+# API docs:  http://localhost:8080/docs
 ```
 
 ---
@@ -217,6 +321,14 @@ ocp-troubleshooter-demo/
 │       ├── namespace.yaml
 │       ├── deployment.yaml          ← Deployment + Service + Route
 │       └── service-monitor.yaml     ← Prometheus scraping
+├── ticketing-system/
+│   ├── app.py                       ← FastAPI ServiceNow simulator
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   ├── build-and-deploy.sh
+│   └── k8s/
+│       ├── deployment.yaml          ← Deployment + PVC + Service
+│       └── route.yaml               ← External route (dashboard)
 └── ai-agent/
     ├── app.py                       ← Gradio web UI
     ├── agent.py                     ← LangChain ReAct agent
@@ -245,3 +357,9 @@ ocp-troubleshooter-demo/
 | `NEMOTRON_API_KEY` | `fake` | API key (MaaS uses bearer token auth internally) |
 | `PROMETHEUS_TOKEN` | *(SA token from mount)* | Override bearer token for Prometheus |
 | `GRADIO_PORT` | `7860` | Gradio server port |
+
+### Ticketing System
+
+| Variable | Default | Description |
+|---|---|---|
+| `TICKETING_DB_PATH` | `/tmp/ticketing/incidents.db` | SQLite database file path |
