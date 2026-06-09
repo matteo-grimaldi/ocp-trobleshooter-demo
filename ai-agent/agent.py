@@ -159,6 +159,7 @@ async def run_agent(user_message: str) -> AsyncIterator[str]:
             },
         ],
         stream=True,
+        extra_body={"max_infer_iters": 30},
     )
 
     async for event in stream:

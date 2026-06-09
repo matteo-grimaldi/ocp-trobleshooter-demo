@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-config
+  namespace: coding-assistant
+data:
+  maas_hostname: "REPLACE_WITH_MAAS_HOSTNAME"
