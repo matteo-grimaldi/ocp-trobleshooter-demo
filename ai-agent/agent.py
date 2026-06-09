@@ -76,7 +76,6 @@ You have access to the following MCP tool servers:
    - Set urgency based on how quickly the issue needs attention: 1 if user-facing, 2 if degraded, 3 if low-impact.
    - Set category to "Application" for app-level issues, "Infrastructure" for pod/node issues.
    - If multiple distinct issues are found, create separate incidents for each.
-   - Before creating a new incident, check list_incidents to avoid duplicates for the same issue.
 
 **Output format — always end with this structure:**
 ---
