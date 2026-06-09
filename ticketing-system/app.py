@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
+import markdown as md
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -339,6 +340,24 @@ td.number { font-weight: 600; }
 .field-value.empty { color: var(--muted); font-style: italic; }
 .field.full-width { grid-column: 1 / -1; border-right: none; }
 .desc-box { white-space: pre-wrap; font-size: .9rem; line-height: 1.6; background: #f8f9fa; padding: 14px 18px; border-radius: 6px; max-height: 500px; overflow-y: auto; }
+.desc-box.md { white-space: normal; }
+.desc-box.md h1, .desc-box.md h2, .desc-box.md h3, .desc-box.md h4 { margin: 1em 0 .5em; color: var(--navy); }
+.desc-box.md h1 { font-size: 1.3rem; border-bottom: 1px solid var(--border); padding-bottom: .3em; }
+.desc-box.md h2 { font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: .25em; }
+.desc-box.md h3 { font-size: 1.05rem; }
+.desc-box.md p { margin: 0 0 .75em; }
+.desc-box.md ul, .desc-box.md ol { margin: 0 0 .75em; padding-left: 1.5em; }
+.desc-box.md li { margin-bottom: .25em; }
+.desc-box.md code { background: #e9ecef; padding: 2px 5px; border-radius: 3px; font-size: .85em; }
+.desc-box.md pre { background: #1e293b; color: #e2e8f0; padding: 12px 16px; border-radius: 6px; overflow-x: auto; margin: 0 0 .75em; }
+.desc-box.md pre code { background: none; padding: 0; color: inherit; font-size: .85em; }
+.desc-box.md table { border-collapse: collapse; width: 100%; margin: 0 0 .75em; }
+.desc-box.md th, .desc-box.md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; font-size: .85rem; }
+.desc-box.md th { background: #e9ecef; font-weight: 600; }
+.desc-box.md blockquote { border-left: 3px solid var(--blue); margin: 0 0 .75em; padding: 4px 12px; color: var(--muted); }
+.desc-box.md hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+.desc-box.md > :first-child { margin-top: 0; }
+.desc-box.md > :last-child { margin-bottom: 0; }
 .activity-item { padding: 14px 20px; border-bottom: 1px solid var(--border); }
 .activity-item:last-child { border-bottom: none; }
 .activity-meta { font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
@@ -445,7 +464,11 @@ def incident_detail_view(number: str):
 
     def _desc_box(text: str, empty_msg: str = "None") -> str:
         if text and text.strip():
-            return f'<div class="desc-box">{_esc(text)}</div>'
+            rendered = md.markdown(
+                text,
+                extensions=["fenced_code", "tables", "nl2br", "sane_lists"],
+            )
+            return f'<div class="desc-box md">{rendered}</div>'
         return f'<div class="desc-box empty" style="color:var(--muted);font-style:italic">{empty_msg}</div>'
 
     notes_html = ""
