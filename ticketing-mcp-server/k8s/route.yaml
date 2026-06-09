@@ -1,0 +1,20 @@
+---
+# Optional external Route — useful for testing or accessing the MCP
+# server from outside the cluster.  Not required for in-cluster agents.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ticketing-mcp-server
+  namespace: coding-assistant
+  labels:
+    app: ticketing-mcp-server
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+spec:
+  to:
+    kind: Service
+    name: ticketing-mcp-server
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

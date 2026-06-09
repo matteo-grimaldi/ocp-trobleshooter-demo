@@ -16,19 +16,23 @@ User / Browser
 │  LangChain ReAct + LangGraph │  │  (ServiceNow Simulator)  │
 └──────┬───────────┬───────────┘  └──────────────────────────┘
        │           │                  ▲
-       │ OpenAI    │ MCP tools        │ POST /api/incidents
+       │ OpenAI    │ MCP tools        │ REST API
        ▼           ▼                  │
-  Nemotron     OpenShift MCP      Thanos Querier
-  3 Nano 30B   server (k8s API)   (openshift-monitoring)
-  (MaaS)
-                                       │ scrapes
-                                       ▼
-                              ┌──────────────────┐
-                              │ Quarkus Buggy App │  demo-app namespace
-                              │ /api/products  500│
-                              │ /api/orders  delay│
-                              │ /api/inventory 503│
-                              └──────────────────┘
+  Nemotron     OpenShift MCP   ┌──────────────────────┐
+  3 Nano 30B   server          │ Ticketing MCP Server │  ← OpenShift AI
+  (MaaS)       (k8s API)       │ (MCP catalog)        │    MCP catalog
+               │               └──────────────────────┘
+               │
+           Thanos Querier
+           (openshift-monitoring)
+                    │ scrapes
+                    ▼
+           ┌──────────────────┐
+           │ Quarkus Buggy App │  demo-app namespace
+           │ /api/products  500│
+           │ /api/orders  delay│
+           │ /api/inventory 503│
+           └──────────────────┘
 ```
 
 ---
@@ -80,7 +84,33 @@ A lightweight **ServiceNow Table API simulator** for incident management. Provid
 | `caller_id` | `ocp-troubleshooter` | Who reported the incident |
 | `opened_at` | `2025-01-15 07:00:00` | Creation timestamp (UTC) |
 
-### 3. AI Troubleshooter Agent (`ai-agent/`)
+### 3. Ticketing MCP Server (`ticketing-mcp-server/`)
+
+A standalone **MCP server** that wraps the ticketing system REST API as MCP tools. Deployed as its own service and registered in the **OpenShift AI MCP catalog** so any agent on the platform can discover and use it.
+
+**MCP tools exposed:**
+
+| Tool | Description |
+|---|---|
+| `create_incident` | Create a new incident with auto-generated INC number and priority |
+| `list_incidents` | List/filter incidents by state, category, priority |
+| `get_incident` | Get full incident details including work notes |
+| `update_incident` | Update state, assignment, severity, close notes |
+| `add_work_note` | Append a timestamped work note to an incident |
+
+- **Transport:** `streamable-http` at `/mcp`
+- **In-cluster URL:** `http://ticketing-mcp-server.coding-assistant.svc:8080/mcp`
+
+**OpenShift AI integration (two options):**
+
+| Mechanism | File | RHOAI version | What it does |
+|---|---|---|---|
+| `MCPServer` CRD | `k8s/mcpserver.yaml` | 3.4+ | The MCP lifecycle operator creates the Deployment, Service, and probes; the server appears in the MCP catalog automatically |
+| `gen-ai-aa-mcp-servers` ConfigMap | `k8s/mcp-catalog-entry.yaml` | 3.0+ | Registers an already-deployed server in the GenAI Playground UI |
+
+`build-and-deploy.sh` detects which mechanism is available and applies the right one.
+
+### 4. AI Troubleshooter Agent (`ai-agent/`)
 
 A Python LangChain ReAct agent with a Gradio web UI.
 
@@ -166,7 +196,27 @@ cd ticketing-system
 
 Open the Route URL in a browser to see the incident dashboard.
 
-### Step 3 — Deploy the AI Agent
+### Step 3 — Deploy the Ticketing MCP Server
+
+```bash
+cd ticketing-mcp-server
+./build-and-deploy.sh
+```
+
+The script auto-detects whether the MCP lifecycle operator is installed:
+- **RHOAI 3.4+** (operator present) — applies `k8s/mcpserver.yaml`; the operator creates the Deployment and Service and the server appears in the MCP catalog
+- **RHOAI 3.0–3.3** (no operator) — applies `k8s/deployment.yaml` + `k8s/route.yaml` as a manual Deployment
+
+In both cases the script also applies `k8s/mcp-catalog-entry.yaml` to register the server in the GenAI Playground.
+
+```bash
+# Verify
+oc get pods -n coding-assistant | grep ticketing-mcp
+# If using the MCPServer CRD:
+oc get mcpserver ticketing-mcp-server -n coding-assistant
+```
+
+### Step 4 — Deploy the AI Agent
 
 ```bash
 cd ai-agent
@@ -191,7 +241,7 @@ oc get pods -n coding-assistant | grep troubleshooter
 oc get route ocp-troubleshooter -n coding-assistant
 ```
 
-### Step 4 — Run the Demo
+### Step 5 — Run the Demo
 
 1. Open the agent Route URL in a browser.
 2. Use one of the quick-start example prompts, e.g.:
@@ -329,6 +379,16 @@ ocp-troubleshooter-demo/
 │   └── k8s/
 │       ├── deployment.yaml          ← Deployment + PVC + Service
 │       └── route.yaml               ← External route (dashboard)
+├── ticketing-mcp-server/
+│   ├── server.py                    ← FastMCP server (MCP catalog)
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   ├── build-and-deploy.sh
+│   └── k8s/
+│       ├── mcpserver.yaml           ← MCPServer CR (RHOAI 3.4+, operator-managed)
+│       ├── mcp-catalog-entry.yaml   ← GenAI Playground registration (RHOAI 3.0+)
+│       ├── deployment.yaml          ← Manual fallback Deployment + Service
+│       └── route.yaml               ← Optional external route
 └── ai-agent/
     ├── app.py                       ← Gradio web UI
     ├── agent.py                     ← LangChain ReAct agent
@@ -363,3 +423,10 @@ ocp-troubleshooter-demo/
 | Variable | Default | Description |
 |---|---|---|
 | `TICKETING_DB_PATH` | `/tmp/ticketing/incidents.db` | SQLite database file path |
+
+### Ticketing MCP Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `TICKETING_API_URL` | `http://ticketing-system.coding-assistant.svc:8080` | Ticketing system REST API base URL |
+| `MCP_PORT` | `8080` | Port for the MCP streamable-http transport |
