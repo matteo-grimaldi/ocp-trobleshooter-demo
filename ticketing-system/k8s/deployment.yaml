@@ -1,0 +1,96 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketing-system
+  namespace: coding-assistant
+  labels:
+    app: ticketing-system
+    app.kubernetes.io/name: ticketing-system
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticketing-system
+  template:
+    metadata:
+      labels:
+        app: ticketing-system
+        app.kubernetes.io/name: ticketing-system
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      containers:
+        - name: ticketing-system
+          image: image-registry.openshift-image-registry.svc:5000/coding-assistant/ticketing-system:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: TICKETING_DB_PATH
+              value: "/tmp/ticketing/incidents.db"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: ticketing-data
+              mountPath: /tmp/ticketing
+      volumes:
+        - name: ticketing-data
+          persistentVolumeClaim:
+            claimName: ticketing-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ticketing-data
+  namespace: coding-assistant
+  labels:
+    app: ticketing-system
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticketing-system
+  namespace: coding-assistant
+  labels:
+    app: ticketing-system
+    app.kubernetes.io/name: ticketing-system
+spec:
+  selector:
+    app: ticketing-system
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

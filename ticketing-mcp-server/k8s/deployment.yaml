@@ -1,0 +1,77 @@
+---
+# Manual deployment — use this when the MCP lifecycle operator is not
+# installed.  If the operator IS available, prefer mcpserver.yaml instead
+# (it creates the Deployment and Service for you).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketing-mcp-server
+  namespace: coding-assistant
+  labels:
+    app: ticketing-mcp-server
+    app.kubernetes.io/name: ticketing-mcp-server
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticketing-mcp-server
+  template:
+    metadata:
+      labels:
+        app: ticketing-mcp-server
+        app.kubernetes.io/name: ticketing-mcp-server
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      containers:
+        - name: ticketing-mcp-server
+          image: image-registry.openshift-image-registry.svc:5000/coding-assistant/ticketing-mcp-server:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: MCP_PORT
+              value: "8080"
+            - name: TICKETING_API_URL
+              value: "http://ticketing-system.coding-assistant.svc:8080"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticketing-mcp-server
+  namespace: coding-assistant
+  labels:
+    app: ticketing-mcp-server
+    app.kubernetes.io/name: ticketing-mcp-server
+spec:
+  selector:
+    app: ticketing-mcp-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

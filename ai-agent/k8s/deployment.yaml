@@ -50,10 +50,15 @@ spec:
               value: "all=INFO"
             - name: SQLITE_STORE_DIR
               value: "/tmp/ogx"
+            - name: MAAS_HOSTNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: maas_hostname
             - name: VLLM_URL
-              value: "https://<your-maas-endpoint>/maas/nemotron-3-nano-30b-a3b/v1"
+              value: "https://$(MAAS_HOSTNAME)/maas/nemotron-3-nano-30b-a3b/v1"
             - name: VLLM_MAX_TOKENS
-              value: "4096"
+              value: "8192"
             - name: VLLM_TLS_VERIFY
               value: "false"
             - name: VLLM_API_TOKEN

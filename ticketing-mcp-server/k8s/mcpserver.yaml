@@ -1,0 +1,66 @@
+---
+# MCPServer CR — requires the MCP lifecycle operator (RHOAI 3.4+).
+# The operator creates the Deployment, Service, and health probes
+# automatically and registers the server in the OpenShift AI MCP catalog.
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: ticketing-mcp-server
+  namespace: coding-assistant
+spec:
+  extraLabels:
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: image-registry.openshift-image-registry.svc:5000/coding-assistant/ticketing-mcp-server:latest
+
+  config:
+    port: 8080
+    path: /mcp
+    env:
+      - name: MCP_PORT
+        value: "8080"
+      - name: TICKETING_API_URL
+        value: "http://ticketing-system.coding-assistant.svc:8080"
+      - name: PYTHONUNBUFFERED
+        value: "1"
+
+  runtime:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+    security:
+      podSecurityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        capabilities:
+          drop:
+            - ALL
+    health:
+      livenessProbe:
+        tcpSocket:
+          port: 8080
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        failureThreshold: 3
+      readinessProbe:
+        tcpSocket:
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        failureThreshold: 3
+
+  mcp:
+    stateless: true

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 OGX_BASE_URL = os.getenv("OGX_BASE_URL", "http://localhost:8321")
 OCP_MCP_URL = os.getenv("OCP_MCP_URL", "http://openshift-mcp.coding-assistant.svc:8000/mcp")
 PROMETHEUS_MCP_URL = os.getenv("PROMETHEUS_MCP_URL", "http://localhost:8765/mcp")
+TICKETING_MCP_URL = os.getenv("TICKETING_MCP_URL", "http://ticketing-mcp-server.coding-assistant.svc:8080/mcp")
 NEMOTRON_MODEL = os.getenv("NEMOTRON_MODEL", "nemotron/nemotron-3-nano-30b-a3b")
 KNOWLEDGE_FILE = os.getenv("KNOWLEDGE_FILE", "/etc/agent-knowledge/knowledge.md")
 
@@ -57,12 +58,24 @@ You have access to the following MCP tool servers:
   * p99 latency:     histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{namespace="demo-app"}[5m]))
   * Pod restarts:    kube_pod_container_status_restarts_total{namespace="demo-app"}
 
+**ticketing** (Ticketing System):
+- Use create_incident to open a ticket when you detect issues.
+- Use add_work_note to append investigation details to an existing ticket.
+- Use list_incidents to check for recent open incidents before creating duplicates.
+
 **Troubleshooting workflow — always follow this order:**
 1. List pods in the target namespace (default: demo-app) — note STATUS and RESTARTS.
 2. For any pod not in Running state, get pod details and events.
 3. Query Prometheus for HTTP error rates and latency across all endpoints.
 4. Retrieve logs from the affected pods (last 100 lines).
 5. Synthesize your findings into a structured diagnosis.
+6. If any issues were found, open an incident in the ticketing system:
+   - Set short_description to a concise summary of the issue (e.g. "High 5xx error rate on /api/products in demo-app").
+   - Set description to the full diagnosis including observed symptoms, root cause analysis, affected endpoints, and recommended fix.
+   - Set impact based on severity: 1 (High) for CRITICAL, 2 (Medium) for HIGH, 3 (Low) for MEDIUM/LOW.
+   - Set urgency based on how quickly the issue needs attention: 1 if user-facing, 2 if degraded, 3 if low-impact.
+   - Set category to "Application" for app-level issues, "Infrastructure" for pod/node issues.
+   - If multiple distinct issues are found, create separate incidents for each.
 
 **Output format — always end with this structure:**
 ---
@@ -87,6 +100,11 @@ You have access to the following MCP tool servers:
 
 ### Severity
 <CRITICAL / HIGH / MEDIUM / LOW>
+
+### Incidents Created
+| Ticket | Summary | Priority |
+|--------|---------|----------|
+| INCxxxxxxx | ... | ... |
 ---
 
 Be concise but thorough. Use data from tools to back every claim.
@@ -133,8 +151,15 @@ async def run_agent(user_message: str) -> AsyncIterator[str]:
                 "server_url": PROMETHEUS_MCP_URL,
                 "require_approval": "never",
             },
+            {
+                "type": "mcp",
+                "server_label": "ticketing",
+                "server_url": TICKETING_MCP_URL,
+                "require_approval": "never",
+            },
         ],
         stream=True,
+        extra_body={"max_infer_iters": 30},
     )
 
     async for event in stream:
