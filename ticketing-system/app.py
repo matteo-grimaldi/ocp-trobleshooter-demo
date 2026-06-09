@@ -283,7 +283,93 @@ def add_work_note(number: str, body: WorkNoteCreate):
     return _get_incident(number)
 
 
-# ── Dashboard (minimal HTML) ──────────────────────────────────────────────
+# ── UI helpers ────────────────────────────────────────────────────────────
+
+_STATE_COLOR = {
+    "New": "#0d6efd",
+    "In Progress": "#e8a317",
+    "On Hold": "#6c757d",
+    "Resolved": "#198754",
+    "Closed": "#495057",
+}
+
+_PRIORITY_LABEL = {
+    1: "1 — Critical",
+    2: "2 — High",
+    3: "3 — Moderate",
+    4: "4 — Low",
+    5: "5 — Planning",
+}
+
+_IMPACT_LABEL = {1: "1 — High", 2: "2 — Medium", 3: "3 — Low"}
+_URGENCY_LABEL = _IMPACT_LABEL
+
+_CSS = """\
+:root { --navy: #1a1a2e; --bg: #f4f5f7; --card: #fff; --border: #dfe1e6; --text: #172b4d; --muted: #6b778c; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+a { color: #0052cc; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.topbar { background: var(--navy); color: #fff; padding: 0 2rem; height: 48px; display: flex; align-items: center; gap: 1.5rem; }
+.topbar .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: .3px; }
+.topbar a { color: #c2c7d0; font-size: .9rem; }
+.topbar a:hover { color: #fff; text-decoration: none; }
+.container { max-width: 1280px; margin: 0 auto; padding: 1.5rem 2rem; }
+.stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.stat { background: var(--card); padding: 1rem 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); min-width: 140px; }
+.stat .value { font-size: 1.8rem; font-weight: 700; color: var(--navy); }
+.stat .label { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+table { width: 100%; border-collapse: collapse; background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.1); border-radius: 8px; overflow: hidden; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--navy); color: #fff; font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .4px; }
+tr:hover { background: #f0f4ff; }
+td.number { font-weight: 600; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: .8rem; font-weight: 600; color: #fff; }
+.breadcrumb { font-size: .85rem; color: var(--muted); margin-bottom: 1rem; }
+.page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: .25rem; flex-wrap: wrap; }
+.page-header h1 { font-size: 1.5rem; }
+.card { background: var(--card); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 1.5rem; }
+.card-header { padding: 12px 20px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: .95rem; color: var(--navy); }
+.card-body { padding: 16px 20px; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.field { padding: 10px 20px; border-bottom: 1px solid var(--border); }
+.field:nth-child(odd) { border-right: 1px solid var(--border); }
+.field-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 3px; }
+.field-value { font-size: .95rem; word-break: break-word; }
+.field-value.empty { color: var(--muted); font-style: italic; }
+.field.full-width { grid-column: 1 / -1; border-right: none; }
+.desc-box { white-space: pre-wrap; font-size: .9rem; line-height: 1.6; background: #f8f9fa; padding: 14px 18px; border-radius: 6px; max-height: 500px; overflow-y: auto; }
+.activity-item { padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.activity-item:last-child { border-bottom: none; }
+.activity-meta { font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+.activity-text { font-size: .9rem; line-height: 1.5; white-space: pre-wrap; }
+.no-data { padding: 20px; color: var(--muted); text-align: center; font-style: italic; }
+"""
+
+
+def _badge(state: str) -> str:
+    color = _STATE_COLOR.get(state, "#6c757d")
+    return f'<span class="badge" style="background:{color}">{state}</span>'
+
+
+def _fv(val, fallback="—") -> str:
+    from html import escape as _esc
+    if val is None or str(val).strip() == "":
+        return f'<span class="field-value empty">{fallback}</span>'
+    return f'<span class="field-value">{_esc(str(val))}</span>'
+
+
+def _topbar() -> str:
+    return (
+        '<div class="topbar">'
+        '<span class="brand">Incident Management</span>'
+        '<a href="/">Dashboard</a>'
+        '<a href="/docs" target="_blank">API Docs</a>'
+        '</div>'
+    )
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
@@ -292,69 +378,141 @@ def dashboard():
             "SELECT * FROM incidents ORDER BY opened_at DESC LIMIT 100"
         ).fetchall()
 
-    STATE_BADGE = {
-        "New": "#0d6efd",
-        "In Progress": "#ffc107",
-        "On Hold": "#6c757d",
-        "Resolved": "#198754",
-        "Closed": "#495057",
-    }
-
-    PRIORITY_LABEL = {1: "1-Critical", 2: "2-High", 3: "3-Moderate", 4: "4-Low", 5: "5-Planning"}
+    from html import escape as _esc
 
     table_rows = ""
     for r in rows:
-        color = STATE_BADGE.get(r["state"], "#6c757d")
-        table_rows += f"""
-        <tr>
-          <td><a href="/api/incidents/{r['number']}">{r['number']}</a></td>
-          <td><span style="background:{color};color:#fff;padding:2px 8px;border-radius:4px;font-size:0.85em">{r['state']}</span></td>
-          <td>{PRIORITY_LABEL.get(r['priority'], r['priority'])}</td>
-          <td>{r['category']}</td>
-          <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{r['short_description']}</td>
-          <td>{r['opened_at']}</td>
-        </tr>"""
+        table_rows += (
+            "<tr>"
+            f'<td class="number"><a href="/incidents/{r["number"]}">{r["number"]}</a></td>'
+            f"<td>{_badge(r['state'])}</td>"
+            f"<td>{_PRIORITY_LABEL.get(r['priority'], r['priority'])}</td>"
+            f"<td>{_esc(r['category'])}</td>"
+            f'<td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{_esc(r["short_description"])}</td>'
+            f"<td>{_esc(r['caller_id'])}</td>"
+            f"<td>{r['opened_at']}</td>"
+            f"<td>{r['updated_at']}</td>"
+            "</tr>"
+        )
 
-    return f"""\
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Incident Dashboard</title>
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #f5f5f5; }}
-    h1 {{ color: #1a1a2e; }}
-    table {{ width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12); }}
-    th, td {{ padding: 10px 14px; text-align: left; border-bottom: 1px solid #e0e0e0; }}
-    th {{ background: #1a1a2e; color: #fff; }}
-    tr:hover {{ background: #f0f4ff; }}
-    a {{ color: #0d6efd; text-decoration: none; }}
-    .stats {{ display: flex; gap: 1rem; margin-bottom: 1.5rem; }}
-    .stat {{ background: #fff; padding: 1rem 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }}
-    .stat .value {{ font-size: 1.8rem; font-weight: bold; color: #1a1a2e; }}
-    .stat .label {{ color: #666; font-size: 0.9rem; }}
-  </style>
-</head>
-<body>
-  <h1>Incident Dashboard</h1>
-  <div class="stats">
-    <div class="stat"><div class="value">{len(rows)}</div><div class="label">Total Incidents</div></div>
-    <div class="stat"><div class="value">{sum(1 for r in rows if r['state'] == 'New')}</div><div class="label">New</div></div>
-    <div class="stat"><div class="value">{sum(1 for r in rows if r['state'] == 'In Progress')}</div><div class="label">In Progress</div></div>
-    <div class="stat"><div class="value">{sum(1 for r in rows if r['state'] in ('Resolved','Closed'))}</div><div class="label">Resolved / Closed</div></div>
-  </div>
-  <table>
-    <thead>
-      <tr><th>Number</th><th>State</th><th>Priority</th><th>Category</th><th>Short Description</th><th>Opened</th></tr>
-    </thead>
-    <tbody>
-      {table_rows if table_rows else '<tr><td colspan="6" style="text-align:center;color:#999">No incidents yet</td></tr>'}
-    </tbody>
-  </table>
-</body>
-</html>"""
+    total = len(rows)
+    new = sum(1 for r in rows if r["state"] == "New")
+    wip = sum(1 for r in rows if r["state"] == "In Progress")
+    done = sum(1 for r in rows if r["state"] in ("Resolved", "Closed"))
+
+    return (
+        "<!DOCTYPE html>"
+        '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>Incident Dashboard</title>"
+        f"<style>{_CSS}</style></head><body>"
+        f"{_topbar()}"
+        '<div class="container">'
+        '<h1 style="margin:1rem 0 .75rem;font-size:1.4rem">All Incidents</h1>'
+        '<div class="stats">'
+        f'<div class="stat"><div class="value">{total}</div><div class="label">Total</div></div>'
+        f'<div class="stat"><div class="value">{new}</div><div class="label">New</div></div>'
+        f'<div class="stat"><div class="value">{wip}</div><div class="label">In Progress</div></div>'
+        f'<div class="stat"><div class="value">{done}</div><div class="label">Resolved / Closed</div></div>'
+        "</div>"
+        "<table><thead><tr>"
+        "<th>Number</th><th>State</th><th>Priority</th><th>Category</th>"
+        "<th>Short Description</th><th>Caller</th><th>Opened</th><th>Updated</th>"
+        "</tr></thead><tbody>"
+        + (table_rows if table_rows else '<tr><td colspan="8" class="no-data">No incidents yet</td></tr>')
+        + "</tbody></table></div></body></html>"
+    )
 
 
-# ── Health endpoint ────────────────────────────────────────────────────────
+# ── Incident detail view ─────────────────────────────────────────────────
+
+@app.get("/incidents/{number}", response_class=HTMLResponse)
+def incident_detail_view(number: str):
+    from html import escape as _esc
+
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM incidents WHERE number = ?", (number,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, f"Incident {number} not found")
+        notes = conn.execute(
+            "SELECT * FROM work_notes WHERE incident = ? ORDER BY created_at DESC",
+            (number,),
+        ).fetchall()
+
+    r = dict(row)
+
+    def _desc_box(text: str, empty_msg: str = "None") -> str:
+        if text and text.strip():
+            return f'<div class="desc-box">{_esc(text)}</div>'
+        return f'<div class="desc-box empty" style="color:var(--muted);font-style:italic">{empty_msg}</div>'
+
+    notes_html = ""
+    if notes:
+        for n in notes:
+            notes_html += (
+                '<div class="activity-item">'
+                f'<div class="activity-meta">{n["created_at"]} UTC</div>'
+                f'<div class="activity-text">{_esc(n["note"])}</div>'
+                "</div>"
+            )
+    else:
+        notes_html = '<div class="no-data">No work notes yet</div>'
+
+    return (
+        "<!DOCTYPE html>"
+        '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{r['number']} — Incident</title>"
+        f"<style>{_CSS}</style></head><body>"
+        f"{_topbar()}"
+        '<div class="container">'
+        # breadcrumb + header
+        f'<div class="breadcrumb"><a href="/">Incidents</a> &rsaquo; {r["number"]}</div>'
+        f'<div class="page-header"><h1>{r["number"]}</h1>{_badge(r["state"])}</div>'
+        f'<p style="color:var(--muted);margin-bottom:1.25rem;font-size:.95rem">{_esc(r["short_description"])}</p>'
+        # Details card
+        '<div class="card"><div class="card-header">Details</div>'
+        '<div class="field-grid">'
+        f'<div class="field"><div class="field-label">Number</div>{_fv(r["number"])}</div>'
+        f'<div class="field"><div class="field-label">State</div><span class="field-value">{_badge(r["state"])}</span></div>'
+        f'<div class="field"><div class="field-label">Priority</div>{_fv(_PRIORITY_LABEL.get(r["priority"], r["priority"]))}</div>'
+        f'<div class="field"><div class="field-label">Category</div>{_fv(r["category"])}</div>'
+        f'<div class="field"><div class="field-label">Impact</div>{_fv(_IMPACT_LABEL.get(r["impact"], r["impact"]))}</div>'
+        f'<div class="field"><div class="field-label">Urgency</div>{_fv(_URGENCY_LABEL.get(r["urgency"], r["urgency"]))}</div>'
+        f'<div class="field"><div class="field-label">Subcategory</div>{_fv(r["subcategory"])}</div>'
+        f'<div class="field"><div class="field-label">Caller</div>{_fv(r["caller_id"])}</div>'
+        f'<div class="field full-width"><div class="field-label">Short Description</div>{_fv(r["short_description"])}</div>'
+        "</div></div>"
+        # Assignment card
+        '<div class="card"><div class="card-header">Assignment</div>'
+        '<div class="field-grid">'
+        f'<div class="field"><div class="field-label">Assignment Group</div>{_fv(r["assignment_group"])}</div>'
+        f'<div class="field"><div class="field-label">Assigned To</div>{_fv(r["assigned_to"])}</div>'
+        "</div></div>"
+        # Dates card
+        '<div class="card"><div class="card-header">Dates</div>'
+        '<div class="field-grid">'
+        f'<div class="field"><div class="field-label">Opened</div>{_fv(r["opened_at"])}</div>'
+        f'<div class="field"><div class="field-label">Updated</div>{_fv(r["updated_at"])}</div>'
+        f'<div class="field"><div class="field-label">Resolved</div>{_fv(r["resolved_at"])}</div>'
+        '<div class="field">&nbsp;</div>'
+        "</div></div>"
+        # Description card
+        '<div class="card"><div class="card-header">Description</div>'
+        f'<div class="card-body">{_desc_box(r["description"], "No description provided")}</div></div>'
+        # Resolution card
+        '<div class="card"><div class="card-header">Resolution Information</div>'
+        f'<div class="card-body">{_desc_box(r["close_notes"], "No resolution notes")}</div></div>'
+        # Activity card
+        f'<div class="card"><div class="card-header">Activity · Work Notes ({len(notes)})</div>'
+        f"{notes_html}</div>"
+        "</div></body></html>"
+    )
+
+
+# ── Health endpoint ───────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
