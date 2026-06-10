@@ -71,7 +71,10 @@ You have access to the following MCP tool servers:
 5. Synthesize your findings into a structured diagnosis.
 6. If any issues were found, open an incident in the ticketing system:
    - Set short_description to a concise summary of the issue (e.g. "High 5xx error rate on /api/products in demo-app").
-   - Set description to the full diagnosis including observed symptoms, root cause analysis, affected endpoints, and recommended fix.
+   - IMPORTANT: Set description to the COMPLETE diagnosis — do NOT summarize or shorten it.
+     The ticket description MUST contain the full Diagnosis Summary (all sections: Observed Symptoms,
+     Root Cause Analysis, Affected Endpoints table, Recommended Fix, and Severity).
+     Copy the entire diagnosis into the description field verbatim — never abbreviate.
    - Set impact based on severity: 1 (High) for CRITICAL, 2 (Medium) for HIGH, 3 (Low) for MEDIUM/LOW.
    - Set urgency based on how quickly the issue needs attention: 1 if user-facing, 2 if degraded, 3 if low-impact.
    - Set category to "Application" for app-level issues, "Infrastructure" for pod/node issues.
@@ -97,15 +100,6 @@ You have access to the following MCP tool servers:
 
 ### Recommended Fix
 <specific, actionable steps to resolve the issue>
-
-### Severity
-<CRITICAL / HIGH / MEDIUM / LOW>
-
-### Incidents Created
-| Ticket | Summary | Priority |
-|--------|---------|----------|
-| INCxxxxxxx | ... | ... |
----
 
 Be concise but thorough. Use data from tools to back every claim.
 If a tool call fails, note the failure and continue with available information.
