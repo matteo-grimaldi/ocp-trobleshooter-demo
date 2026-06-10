@@ -11,10 +11,12 @@ same pod and handles:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import AsyncIterator
 
+import httpx
 from ogx_client import AsyncOgxClient
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,10 @@ If a tool call fails, note the failure and continue with available information.
 """
 
 
+AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "300"))
+MAX_INFER_ITERS = int(os.getenv("MAX_INFER_ITERS", "15"))
+
+
 async def run_agent(user_message: str) -> AsyncIterator[str]:
     """
     Stream the agent's response for a given user message.
@@ -115,9 +121,13 @@ async def run_agent(user_message: str) -> AsyncIterator[str]:
     streams the final answer.
 
     Yields:
-        Text chunks from the assistant's final response.
+        Text chunks (and tool-call status lines) from the agent.
     """
-    client = AsyncOgxClient(base_url=OGX_BASE_URL, api_key="local")
+    client = AsyncOgxClient(
+        base_url=OGX_BASE_URL,
+        api_key="local",
+        timeout=httpx.Timeout(connect=30.0, read=AGENT_TIMEOUT_SECONDS, write=30.0, pool=30.0),
+    )
 
     knowledge = _load_knowledge()
     instructions = (
@@ -128,34 +138,81 @@ async def run_agent(user_message: str) -> AsyncIterator[str]:
 
     logger.info("Sending request to OGX at %s", OGX_BASE_URL)
 
-    stream = await client.responses.create(
-        model=NEMOTRON_MODEL,
-        input=user_message,
-        instructions=instructions,
-        tools=[
-            {
-                "type": "mcp",
-                "server_label": "openshift",
-                "server_url": OCP_MCP_URL,
-                "require_approval": "never",
-            },
-            {
-                "type": "mcp",
-                "server_label": "prometheus",
-                "server_url": PROMETHEUS_MCP_URL,
-                "require_approval": "never",
-            },
-            {
-                "type": "mcp",
-                "server_label": "ticketing",
-                "server_url": TICKETING_MCP_URL,
-                "require_approval": "never",
-            },
-        ],
-        stream=True,
-        extra_body={"max_infer_iters": 30},
-    )
+    try:
+        stream = await asyncio.wait_for(
+            client.responses.create(
+                model=NEMOTRON_MODEL,
+                input=user_message,
+                instructions=instructions,
+                tools=[
+                    {
+                        "type": "mcp",
+                        "server_label": "OpenShift MCP",
+                        "server_url": OCP_MCP_URL,
+                        "require_approval": "never",
+                    },
+                    {
+                        "type": "mcp",
+                        "server_label": "Prometheus MCP",
+                        "server_url": PROMETHEUS_MCP_URL,
+                        "require_approval": "never",
+                    },
+                    {
+                        "type": "mcp",
+                        "server_label": "Ticketing System MCP",
+                        "server_url": TICKETING_MCP_URL,
+                        "require_approval": "never",
+                    },
+                ],
+                stream=True,
+                extra_body={"max_infer_iters": MAX_INFER_ITERS},
+            ),
+            timeout=60,
+        )
+    except asyncio.TimeoutError:
+        logger.error("Timed out waiting for OGX to start streaming")
+        yield "\n\n⚠️ **Error:** Timed out connecting to the agent backend. Please try again.\n"
+        return
+    except Exception as exc:
+        logger.exception("Failed to create OGX stream")
+        yield f"\n\n⚠️ **Error:** Could not reach the agent backend: {exc}\n"
+        return
 
-    async for event in stream:
-        if getattr(event, "type", None) == "response.output_text.delta":
-            yield event.delta
+    try:
+        async with asyncio.timeout(AGENT_TIMEOUT_SECONDS):
+            async for event in stream:
+                event_type = getattr(event, "type", None)
+
+                if event_type == "response.output_text.delta":
+                    yield event.delta
+
+                elif event_type == "response.output_item.added":
+                    item = getattr(event, "item", None)
+                    if item and getattr(item, "type", None) == "mcp_call":
+                        server = getattr(item, "server_label", "unknown")
+                        tool = getattr(item, "name", "unknown")
+                        logger.info("Tool call started: %s → %s", server, tool)
+                        yield f"\n\n> 🔧 Calling **{server}** → `{tool}`…\n\n"
+
+                elif event_type == "response.output_item.done":
+                    item = getattr(event, "item", None)
+                    if item and getattr(item, "type", None) == "mcp_call":
+                        server = getattr(item, "server_label", "unknown")
+                        tool = getattr(item, "name", "unknown")
+                        error = getattr(item, "error", None)
+                        if error:
+                            logger.warning("Tool call failed: %s → %s: %s", server, tool, error)
+                            yield f"\n\n> ⚠️ **{server}** → `{tool}` failed: {error}\n\n"
+                        else:
+                            logger.info("Tool call completed: %s → %s", server, tool)
+
+    except TimeoutError:
+        logger.error("Agent exceeded %ds timeout", AGENT_TIMEOUT_SECONDS)
+        yield (
+            f"\n\n⚠️ **Error:** The agent took longer than {AGENT_TIMEOUT_SECONDS}s and was stopped. "
+            "This usually means the model got stuck in a tool-calling loop. Please try again "
+            "with a more specific question.\n"
+        )
+    except Exception as exc:
+        logger.exception("Error during agent streaming")
+        yield f"\n\n⚠️ **Error:** Agent encountered an error: {exc}\n"
