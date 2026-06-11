@@ -63,7 +63,7 @@ You have access to the following MCP tool servers:
 **ticketing** (Ticketing System):
 - Use create_incident to open a ticket when you detect issues.
 - Use add_work_note to append investigation details to an existing ticket.
-- Use list_incidents to check for recent open incidents before creating duplicates.
+- Do NOT use list_incidents — always create a new incident when issues are found.
 
 **Troubleshooting workflow — always follow this order:**
 1. List pods in the target namespace (default: demo-app) — note STATUS and RESTARTS.
