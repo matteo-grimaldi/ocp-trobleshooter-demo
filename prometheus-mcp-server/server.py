@@ -1,9 +1,9 @@
 """
 Prometheus MCP Server.
 
-A lightweight FastMCP server that exposes PromQL query tools against
-the in-cluster Thanos Querier.  Runs on port 8765 as a sidecar to the
-OGX server so it can be referenced as an MCP tool source in Responses API calls.
+A FastMCP server that exposes PromQL query tools against the in-cluster
+Thanos Querier.  Designed to be deployed as a standalone service on
+OpenShift AI and registered in the MCP catalog.
 
 The service-account bearer token is read from the standard Kubernetes
 mount path (or from the PROMETHEUS_TOKEN env var for local dev).
@@ -30,7 +30,11 @@ _THANOS_URL = os.getenv(
     "https://thanos-querier.openshift-monitoring.svc:9091",
 )
 
-mcp = FastMCP("prometheus-mcp", host="0.0.0.0", port=int(os.getenv("PROMETHEUS_MCP_PORT", "8765")))
+mcp = FastMCP(
+    "prometheus-mcp",
+    host="0.0.0.0",
+    port=int(os.getenv("MCP_PORT", "8080")),
+)
 
 
 def _bearer_token() -> str:
@@ -145,6 +149,6 @@ def query_prometheus_range(promql: str, duration_minutes: int = 30) -> str:
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PROMETHEUS_MCP_PORT", "8765"))
+    port = int(os.getenv("MCP_PORT", "8080"))
     logger.info("Starting Prometheus MCP server on port %d", port)
     mcp.run(transport="streamable-http")

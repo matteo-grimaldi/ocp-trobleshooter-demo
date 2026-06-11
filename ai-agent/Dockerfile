@@ -10,7 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
-COPY app.py agent.py prometheus_mcp.py start.sh ./
+COPY app.py agent.py start.sh ./
 
 # Non-root user for OpenShift compatibility
 RUN useradd -u 1001 -r -g 0 -d /app -s /sbin/nologin appuser && \
@@ -19,11 +19,10 @@ RUN useradd -u 1001 -r -g 0 -d /app -s /sbin/nologin appuser && \
     chmod +x /app/start.sh
 USER 1001
 
-EXPOSE 7860 8765
+EXPOSE 7860
 
 ENV GRADIO_PORT=7860 \
     GRADIO_ANALYTICS_ENABLED=False \
-    PROMETHEUS_MCP_PORT=8765 \
     PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["/app/start.sh"]

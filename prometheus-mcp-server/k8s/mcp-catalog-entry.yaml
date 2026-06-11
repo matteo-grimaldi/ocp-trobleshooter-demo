@@ -1,0 +1,36 @@
+---
+# GenAI Playground MCP catalog entry (RHOAI 3.0+).
+#
+# The gen-ai-aa-mcp-servers ConfigMap is SHARED — other MCP servers may
+# already have entries in it.  Do NOT apply this file directly with
+# "oc apply" as it would overwrite the entire ConfigMap and remove
+# existing entries.
+#
+# Instead, use the build-and-deploy.sh script, which patches just our
+# key into the ConfigMap (creating it if it does not exist yet).
+#
+# To register manually:
+#
+#   # If the ConfigMap already exists — add our entry without touching others:
+#   oc patch configmap gen-ai-aa-mcp-servers -n redhat-ods-applications \
+#     --type=merge -p "$(cat <<'EOF'
+#   {"data":{"Prometheus":"{\n  \"url\": \"http://prometheus-mcp-server.coding-assistant.svc:8080/mcp\",\n  \"description\": \"PromQL queries against the in-cluster Thanos Querier. Instant and range queries with min/avg/max summaries.\"\n}"}}
+#   EOF
+#   )"
+#
+#   # If the ConfigMap does not exist yet — create it:
+#   oc create configmap gen-ai-aa-mcp-servers -n redhat-ods-applications \
+#     --from-literal='Prometheus={"url":"http://prometheus-mcp-server.coding-assistant.svc:8080/mcp","description":"PromQL queries against the in-cluster Thanos Querier. Instant and range queries with min/avg/max summaries."}'
+#
+# Reference — this is what our entry looks like inside the ConfigMap:
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: redhat-ods-applications
+data:
+  Prometheus: |
+    {
+      "url": "http://prometheus-mcp-server.coding-assistant.svc:8080/mcp",
+      "description": "PromQL queries against the in-cluster Thanos Querier. Instant and range queries with min/avg/max summaries."
+    }

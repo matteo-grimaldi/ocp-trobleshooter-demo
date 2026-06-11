@@ -1,15 +1,8 @@
 # OGX client — Responses API with server-side agentic loop
 ogx_client>=1.0.0
 
-# MCP SDK — for the Prometheus FastMCP server
-mcp>=1.0.0
-
 # Gradio web UI — pinned to 5.x; Gradio 6.0 has breaking Chatbot API changes
 gradio>=5.0.0,<6.0.0
-
-# HTTP client (Prometheus MCP server)
-requests>=2.32.0
-urllib3>=2.2.0
 
 # Async
 anyio>=4.4.0

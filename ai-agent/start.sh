@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# start.sh — Start Prometheus MCP server and Gradio UI
+# start.sh — Wait for OGX sidecar and start Gradio UI
 set -e
-
-echo "Starting Prometheus MCP server on port ${PROMETHEUS_MCP_PORT:-8765}..."
-python prometheus_mcp.py &
-PROM_PID=$!
 
 echo "Waiting for OGX server to be ready at ${OGX_BASE_URL:-http://localhost:8321}..."
 OGX_URL="${OGX_BASE_URL:-http://localhost:8321}"

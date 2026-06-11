@@ -94,16 +94,13 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
-        # ── Gradio UI + Prometheus MCP ────────────────────────────────────────
+        # ── Gradio UI ────────────────────────────────────────────────────────
         - name: ocp-troubleshooter
           image: image-registry.openshift-image-registry.svc:5000/coding-assistant/ocp-troubleshooter:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 7860
               name: http
-              protocol: TCP
-            - containerPort: 8765
-              name: prom-mcp
               protocol: TCP
           env:
             - name: GRADIO_PORT
@@ -115,13 +112,9 @@ spec:
             - name: OCP_MCP_URL
               value: "http://openshift-mcp.coding-assistant.svc:8000/mcp"
             - name: PROMETHEUS_MCP_URL
-              value: "http://localhost:8765/mcp"
-            - name: THANOS_URL
-              value: "https://thanos-querier.openshift-monitoring.svc:9091"
+              value: "http://prometheus-mcp-server.coding-assistant.svc:8080/mcp"
             - name: NEMOTRON_MODEL
               value: "nemotron/nemotron-3-nano-30b-a3b"
-            - name: PROMETHEUS_MCP_PORT
-              value: "8765"
             - name: KNOWLEDGE_FILE
               value: "/etc/agent-knowledge/knowledge.md"
             - name: PYTHONUNBUFFERED

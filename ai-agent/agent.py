@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 OGX_BASE_URL = os.getenv("OGX_BASE_URL", "http://localhost:8321")
 OCP_MCP_URL = os.getenv("OCP_MCP_URL", "http://openshift-mcp.coding-assistant.svc:8000/mcp")
-PROMETHEUS_MCP_URL = os.getenv("PROMETHEUS_MCP_URL", "http://localhost:8765/mcp")
+PROMETHEUS_MCP_URL = os.getenv("PROMETHEUS_MCP_URL", "http://prometheus-mcp-server.coding-assistant.svc:8080/mcp")
 TICKETING_MCP_URL = os.getenv("TICKETING_MCP_URL", "http://ticketing-mcp-server.coding-assistant.svc:8080/mcp")
 NEMOTRON_MODEL = os.getenv("NEMOTRON_MODEL", "nemotron/nemotron-3-nano-30b-a3b")
 KNOWLEDGE_FILE = os.getenv("KNOWLEDGE_FILE", "/etc/agent-knowledge/knowledge.md")
