@@ -138,6 +138,36 @@ A Python LangChain ReAct agent with a Gradio web UI.
 
 ## Deploy: Step by Step
 
+### Quick Deploy (all components)
+
+Use the top-level `build-and-deploy-all.sh` script to build and deploy every component in the correct dependency order with a single command:
+
+```bash
+# Deploy everything (reads maas_hostname from ai-agent/k8s/cluster-config.yaml)
+./build-and-deploy-all.sh
+
+# Override the MaaS gateway hostname
+./build-and-deploy-all.sh --maas-hostname <hostname>
+# or via environment variable
+MAAS_HOSTNAME=<hostname> ./build-and-deploy-all.sh
+
+# Deploy a single component
+./build-and-deploy-all.sh ticketing-system
+./build-and-deploy-all.sh --maas-hostname <hostname> ai-agent
+```
+
+The script runs pre-flight checks (`oc` CLI installed, cluster login, namespace exists), applies the shared `cluster-config` ConfigMap, then deploys each component in order:
+
+1. `ticketing-system`
+2. `quarkus-buggy-app`
+3. `ticketing-mcp-server`
+4. `prometheus-mcp-server`
+5. `ai-agent`
+
+Each component's own `build-and-deploy.sh` is called under the hood, so the individual steps below are only needed if you want to deploy components manually.
+
+---
+
 ### Step 1 — Deploy the Quarkus Buggy App
 
 ```bash
@@ -222,21 +252,17 @@ oc get mcpserver ticketing-mcp-server -n coding-assistant
 ```bash
 cd ai-agent
 
-# Apply RBAC (ServiceAccount + cluster-monitoring-view binding)
-oc apply -f k8s/rbac.yaml
+# Deploy using the all-in-one script (reads maas_hostname from k8s/cluster-config.yaml)
+./build-and-deploy.sh
 
-# Build and push the agent image
-# Option A — if the internal registry has an external route:
-REGISTRY_HOST=$(oc get route default-route -n openshift-image-registry \
-  -o jsonpath='{.spec.host}')
-podman build -t "${REGISTRY_HOST}/coding-assistant/ocp-troubleshooter:latest" .
-podman push --tls-verify=false \
-  "${REGISTRY_HOST}/coding-assistant/ocp-troubleshooter:latest"
+# Or override the MaaS gateway hostname via CLI arg or env var
+./build-and-deploy.sh <maas_hostname>
+MAAS_HOSTNAME=<hostname> ./build-and-deploy.sh
+```
 
-# Deploy
-oc apply -f k8s/deployment.yaml
-oc apply -f k8s/route.yaml
+The script resolves `maas_hostname` with the following precedence: **CLI argument > `MAAS_HOSTNAME` env var > value in `k8s/cluster-config.yaml`**. It then applies RBAC, enables the external registry route if needed, builds and pushes the container image, creates the `ogx-stack-config` and `agent-knowledge` ConfigMaps, deploys the manifests, and waits for the rollout to complete.
 
+```bash
 # Verify
 oc get pods -n coding-assistant | grep troubleshooter
 oc get route ocp-troubleshooter -n coding-assistant
