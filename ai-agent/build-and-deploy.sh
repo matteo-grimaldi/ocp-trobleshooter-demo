@@ -1,9 +1,28 @@
 #!/usr/bin/env bash
 # build-and-deploy.sh — Build and deploy the OCP Troubleshooter agent
+#
+# Usage:
+#   ./build-and-deploy.sh                           # uses maas_hostname from cluster-config.yaml
+#   ./build-and-deploy.sh <maas_hostname>            # overrides maas_hostname
+#   MAAS_HOSTNAME=<value> ./build-and-deploy.sh      # override via env var
 set -euo pipefail
 
 NAMESPACE="coding-assistant"
 APP="ocp-troubleshooter"
+
+# Resolve MaaS hostname: CLI arg > env var > value in cluster-config.yaml
+MAAS_HOSTNAME="${1:-${MAAS_HOSTNAME:-}}"
+if [ -z "${MAAS_HOSTNAME}" ]; then
+  MAAS_HOSTNAME=$(grep 'maas_hostname:' k8s/cluster-config.yaml | awk '{print $2}' | tr -d '"')
+  echo "=== Using maas_hostname from cluster-config.yaml: ${MAAS_HOSTNAME} ==="
+  oc apply -f k8s/cluster-config.yaml
+else
+  echo "=== Overriding maas_hostname: ${MAAS_HOSTNAME} ==="
+  oc create configmap cluster-config \
+    --from-literal="maas_hostname=${MAAS_HOSTNAME}" \
+    -n "${NAMESPACE}" \
+    --dry-run=client -o yaml | oc apply -f -
+fi
 
 echo "=== Applying RBAC ==="
 oc apply -f k8s/rbac.yaml
