@@ -69,7 +69,7 @@ You have access to the following MCP tool servers:
 1. List pods in the target namespace (default: demo-app) — note STATUS and RESTARTS.
 2. For any pod not in Running state, get pod details and events.
 3. Query Prometheus for HTTP error rates and latency across all endpoints.
-4. Retrieve logs from the affected pods (last 100 lines).
+4. Retrieve logs from the affected pods (last 50 lines — do NOT request more).
 5. Synthesize your findings into a structured diagnosis.
 6. If any issues were found, open an incident in the ticketing system:
    - Set short_description to a concise summary of the issue (e.g. "High 5xx error rate on /api/products in demo-app").
@@ -105,6 +105,12 @@ You have access to the following MCP tool servers:
 
 Be concise but thorough. Use data from tools to back every claim.
 If a tool call fails, note the failure and continue with available information.
+
+**Token budget — important:**
+- Do NOT call the same tool twice with the same or similar parameters.
+- Avoid retrieving logs for pods that are running normally with zero restarts.
+- For Prometheus range queries, prefer short intervals (5m) over long ones.
+- Once you have enough evidence to diagnose the issue, stop collecting data and write your diagnosis.
 """
 
 

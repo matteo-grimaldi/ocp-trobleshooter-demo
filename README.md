@@ -420,6 +420,23 @@ ocp-troubleshooter-demo/
 | `TICKETING_MCP_URL` | `http://ticketing-mcp-server.coding-assistant.svc:8080/mcp` | Ticketing MCP server URL |
 | `GRADIO_PORT` | `7860` | Gradio server port |
 
+### Token Budget and Context Window Tuning
+
+> **Note:** The settings below have been tuned for this demo, which uses **Nemotron 3 Nano 30B** with a **131 072-token context window**. In a production deployment — especially with a model that has a larger context — these values should be reviewed and adjusted to match your model, cluster size, and operational requirements.
+
+The agent's agentic loop accumulates every tool result (pod listings, Prometheus time-series, container logs) in the model's context. On clusters with many pods or verbose logs, this can exhaust the context window before the agent finishes its diagnosis. The following parameters control how much data the agent collects and how many iterations it runs:
+
+| Parameter | Location | Default | Purpose |
+|---|---|---|---|
+| `MAX_INFER_ITERS` | `ai-agent/agent.py` (env var) | `15` | Maximum number of ReAct iterations (tool-call rounds) the agent can perform. Each iteration adds tool input + output to the context. Lower values reduce the risk of hitting the context limit but may prevent the agent from completing complex diagnoses. |
+| `VLLM_MAX_TOKENS` | `ai-agent/ogx/stack_run_config.yaml` (env var) | `4096` | Maximum output tokens per LLM inference call. Limits how long each individual model response can be. A lower value reserves more of the context window for tool results. |
+| `AGENT_TIMEOUT_SECONDS` | `ai-agent/agent.py` (env var) | `300` | Hard timeout (seconds) for the entire agent run. Acts as a safety net — if the agent is stuck in a loop, it will be stopped after this duration. |
+| Log line cap | `ai-agent/agent.py` (system prompt) | `50 lines` | The system prompt instructs the agent to retrieve only the last 50 lines of logs per pod. Larger values produce more context for diagnosis but consume more tokens. |
+| Prometheus query intervals | `ai-agent/agent.py` (system prompt) | `5m` preferred | The system prompt instructs the agent to prefer short intervals (`[5m]`) for range queries instead of longer windows, reducing the volume of time-series data returned. |
+| `list_incidents` restriction | `ai-agent/agent.py` (system prompt) | Disabled | The agent is explicitly told not to call `list_incidents` to avoid wasting tokens on listing existing tickets. In a production system you may want to re-enable this to prevent duplicate incidents. |
+| Redundant tool call prevention | `ai-agent/agent.py` (system prompt) | Enabled | The system prompt includes a "Token budget" section that tells the agent to avoid calling the same tool twice, skip healthy pods, and stop collecting data once it has enough evidence. |
+| `list_incidents` default limit | `ticketing-mcp-server/server.py` | `20` | When `list_incidents` is called, it returns at most 20 incidents by default. If re-enabled, consider lowering this for token-constrained models. |
+
 ### Ticketing System
 
 | Variable | Default | Description |
