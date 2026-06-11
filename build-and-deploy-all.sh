@@ -14,6 +14,7 @@
 #   3. ticketing-mcp-server    — MCP server wrapping ticketing-system
 #   4. prometheus-mcp-server   — MCP server wrapping Thanos Querier
 #   5. ai-agent                — Gradio UI + OGX (depends on MCP servers)
+#   6. ai-ticketing-agent      — Incident investigator agent (depends on MCP servers)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -115,6 +116,7 @@ COMPONENTS=(
   ticketing-mcp-server
   prometheus-mcp-server
   ai-agent
+  ai-ticketing-agent
 )
 
 for component in "${COMPONENTS[@]}"; do
@@ -123,4 +125,5 @@ done
 
 echo ""
 banner "All components deployed"
-echo "  Agent UI: $(oc get route ocp-troubleshooter -n ${NAMESPACE} -o jsonpath='https://{.spec.host}' 2>/dev/null || echo 'route not found')"
+echo "  Agent UI:           $(oc get route ocp-troubleshooter -n ${NAMESPACE} -o jsonpath='https://{.spec.host}' 2>/dev/null || echo 'route not found')"
+echo "  Ticketing Agent UI: $(oc get route ai-ticketing-agent -n ${NAMESPACE} -o jsonpath='https://{.spec.host}' 2>/dev/null || echo 'route not found')"

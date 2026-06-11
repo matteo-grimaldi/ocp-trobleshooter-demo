@@ -1,45 +1,93 @@
-# OCP AI Troubleshooter Demo
+# AI-Driven Incident Management on OpenShift
 
-An AI agent that autonomously troubleshoots applications deployed on OpenShift.  
-It combines **Nemotron 3 Nano 30B** (via the cluster's MaaS gateway), the **OpenShift MCP server**, and **Prometheus / Thanos** to diagnose application issues in real time.
+A demo of **L1-style incident management** powered by AI agents on **OpenShift AI** and **OGX**.  
+Two autonomous agents — one proactive, one reactive — collaborate with a shared ticketing system and the same MCP tool servers to detect, diagnose, and document application issues on an OpenShift cluster.
+
+| Agent | Role | Trigger |
+|---|---|---|
+| **AI Troubleshooter** (`ai-agent/`) | Proactively scans a namespace, diagnoses issues, and **creates** new incidents | User asks "troubleshoot this app" |
+| **AI Ticketing Agent** (`ai-ticketing-agent/`) | Picks up a **human-created** incident, investigates the reported problem, and **updates** the ticket with findings and resolution | User provides an incident ID (e.g. `INC0000001`) |
+
+Both agents use the same LLM (**Nemotron 3 Nano 30B** via MaaS), the same MCP tool servers, and the same knowledge base — only the system prompt and workflow differ.
 
 ---
 
-## Architecture
+## Demo Scenario
+
+The purpose of this demo is to demonstrate how to use AI agents and MCP Servers deployed on OpenShift AI to troubleshoot applications issues.
+In this simplified scenario there will be the following components: 
+1. **The buggy app** generates continuous errors (HTTP 500s, 503s, high latency).
+2. **AI Troubleshooter** proactively detects and diagnoses these issues, opening incidents automatically.
+3. **AI Ticketing Agent** picks up the human-created incident, investigates using real cluster data, and enriches the ticket with a full diagnosis and 
+recommended fix.
+4. **Ticketing System** persists opened tickets and allows creating new tickets or updating existing ones
+5. **MCP Servers** allows agents to investigate issues and to interact with the ticketing system
+
+
+---
+
+## Agent Architectures
+
+Both agents share the same runtime pattern: a **Gradio web UI** container paired with an **OGX sidecar** container in the same pod. The OGX sidecar handles the server-side agentic loop (tool calling, inference) via the Responses API.
+
+### AI Troubleshooter Agent
+
+Proactive agent — scans a namespace, finds problems, creates tickets.
 
 ```
 User / Browser
-     │  chat                          │  dashboard
-     ▼                                ▼
-┌──────────────────────────────┐  ┌──────────────────────────┐
-│  AI Agent  (Gradio UI)       │  │  Ticketing System        │
-│  LangChain ReAct + LangGraph │  │  (ServiceNow Simulator)  │
-└──────┬───────────┬───────────┘  └──────────────────────────┘
-       │           │                  ▲
-       │ OpenAI    │ MCP tools        │ REST API
-       ▼           ▼                  │
-  Nemotron     OpenShift MCP   ┌──────────────────────┐
-  3 Nano 30B   server          │ Ticketing MCP Server │  ← OpenShift AI
-  (MaaS)       (k8s API)       │ (MCP catalog)        │    MCP catalog
-               │               └──────────────────────┘
-               │
-           Thanos Querier
-           (openshift-monitoring)
-                    │ scrapes
-                    ▼
-           ┌──────────────────┐
-           │ Quarkus Buggy App │  demo-app namespace
-           │ /api/products  500│
-           │ /api/orders  delay│
-           │ /api/inventory 503│
-           └──────────────────┘
+     │ "Troubleshoot demo-app"
+     ▼
+┌─────────────────────────────────┐
+│  AI Troubleshooter (Gradio UI)  │
+│  + OGX sidecar (Responses API) │
+└──────┬──────────┬──────────┬────┘
+       │          │          │
+       ▼          ▼          ▼
+  OpenShift   Prometheus  Ticketing
+  MCP Server  MCP Server  MCP Server
+  (k8s API)   (Thanos)    (incidents)
+       │          │          │
+       ▼          ▼          ▼
+  Pods, logs,  Error rates  create_incident
+  events       & latency    add_work_note
 ```
+
+**Workflow:** List pods → query Prometheus → retrieve logs → synthesize diagnosis → **create** incident.
+
+### AI Ticketing Agent
+
+Reactive agent — investigates an existing incident, enriches it with data.
+
+```
+User / Browser
+     │ "Investigate INC0000031"
+     ▼
+┌──────────────────────────────────┐
+│  AI Ticketing Agent (Gradio UI)  │
+│  + OGX sidecar (Responses API)  │
+└──────┬──────────┬──────────┬─────┘
+       │          │          │
+       ▼          ▼          ▼
+  OpenShift   Prometheus  Ticketing
+  MCP Server  MCP Server  MCP Server
+  (k8s API)   (Thanos)    (incidents)
+       │          │          │
+       ▼          ▼          ▼
+  Pods, logs,  Error rates  get_incident
+  events       & latency    update_incident
+                             add_work_note
+```
+
+**Workflow:** Read incident → add work note "investigation started" → identify app/namespace → check pods → query Prometheus → retrieve logs → correlate with incident description → **update** incident with findings → set state to "In Progress".
 
 ---
 
-## Components
+## Shared Components
 
-### 1. Quarkus Buggy App (`quarkus-buggy-app/`)
+These services are deployed once and consumed by both agents.
+
+### Quarkus Buggy App (`quarkus-buggy-app/`)
 
 A Quarkus 3 REST microservice with intentional, randomly-triggered failures:
 
@@ -53,9 +101,9 @@ A Quarkus 3 REST microservice with intentional, randomly-triggered failures:
 - Exposes `/q/health` (SmallRye Health liveness + readiness)
 - Includes a `TrafficGenerator` that calls all endpoints every 5 seconds to produce continuous metrics
 
-### 2. Ticketing System (`ticketing-system/`)
+### Ticketing System (`ticketing-system/`)
 
-A lightweight **ServiceNow Table API simulator** for incident management. Provides a REST API that mimics ServiceNow's `incident` table, backed by SQLite.
+A lightweight **ServiceNow Table API simulator** for incident management. Provides a REST API that mimics ServiceNow's `incident` table, backed by SQLite. Includes an HTML dashboard at the root URL.
 
 **API endpoints:**
 
@@ -84,19 +132,19 @@ A lightweight **ServiceNow Table API simulator** for incident management. Provid
 | `caller_id` | `ocp-troubleshooter` | Who reported the incident |
 | `opened_at` | `2025-01-15 07:00:00` | Creation timestamp (UTC) |
 
-### 3. Ticketing MCP Server (`ticketing-mcp-server/`)
+### Ticketing MCP Server (`ticketing-mcp-server/`)
 
 A standalone **MCP server** that wraps the ticketing system REST API as MCP tools. Deployed as its own service and registered in the **OpenShift AI MCP catalog** so any agent on the platform can discover and use it.
 
 **MCP tools exposed:**
 
-| Tool | Description |
-|---|---|
-| `create_incident` | Create a new incident with auto-generated INC number and priority |
-| `list_incidents` | List/filter incidents by state, category, priority |
-| `get_incident` | Get full incident details including work notes |
-| `update_incident` | Update state, assignment, severity, close notes |
-| `add_work_note` | Append a timestamped work note to an incident |
+| Tool | Used by Troubleshooter | Used by Ticketing Agent |
+|---|---|---|
+| `create_incident` | **Yes** — creates new tickets | No |
+| `list_incidents` | No | Yes — browse open incidents |
+| `get_incident` | No | **Yes** — reads the incident to investigate |
+| `update_incident` | No | **Yes** — enriches ticket with findings |
+| `add_work_note` | **Yes** — appends investigation notes | **Yes** — appends investigation notes |
 
 - **Transport:** `streamable-http` at `/mcp`
 - **In-cluster URL:** `http://ticketing-mcp-server.coding-assistant.svc:8080/mcp`
@@ -110,24 +158,40 @@ A standalone **MCP server** that wraps the ticketing system REST API as MCP tool
 
 `build-and-deploy.sh` detects which mechanism is available and applies the right one.
 
-### 4. AI Troubleshooter Agent (`ai-agent/`)
+### Prometheus MCP Server (`prometheus-mcp-server/`)
 
-A Python LangChain ReAct agent with a Gradio web UI.
+A standalone **MCP server** that exposes PromQL queries against Thanos Querier as MCP tools.
 
-**Tools available to the agent:**
-- **OpenShift MCP tools** (via `langchain-mcp-adapters`) — pods, deployments, events, logs
-- `query_prometheus(promql)` — instant PromQL query against Thanos Querier
-- **Ticketing MCP tools** — `create_incident`, `list_incidents`, `get_incident`, `update_incident`, `add_work_note`
-- `query_prometheus_range(promql, duration_minutes)` — range query with min/avg/max summary
+**MCP tools exposed:**
 
-**LLM:** Nemotron 3 Nano 30B via `https://<your-maas-endpoint>`
+| Tool | Description |
+|---|---|
+| `query_prometheus` | Instant PromQL query against Thanos Querier |
+| `query_prometheus_range` | Range query (default 30 min) with min/avg/max summary |
+
+- **Transport:** `streamable-http` at `/mcp`
+- **In-cluster URL:** `http://prometheus-mcp-server.coding-assistant.svc:8080/mcp`
+
+### OpenShift MCP Server (external)
+
+The **kubernetes-mcp-server** (`openshift-mcp`) provides Kubernetes API access as MCP tools: listing pods, reading logs, describing deployments, viewing events, etc.
+
+- **In-cluster URL:** `http://openshift-mcp.coding-assistant.svc:8000/mcp`
+- Deployed separately (not part of this repository)
+
+### Shared RBAC (`ai-agent/k8s/rbac.yaml`)
+
+Both agents share a single `ServiceAccount` and `ClusterRoleBinding`:
+
+- **ServiceAccount:** `ocp-troubleshooter-sa` in `coding-assistant` namespace
+- **ClusterRoleBinding:** binds to `cluster-monitoring-view` (system ClusterRole) — allows querying Prometheus / Thanos metrics across all namespaces
 
 ---
 
 ## Prerequisites
 
 - OpenShift cluster with:
-  - User workload monitoring enabled (already done: `enableUserWorkload: true`)
+  - User workload monitoring enabled (`enableUserWorkload: true`)
   - `openshift-mcp` server running in `coding-assistant` namespace
   - Nemotron model deployed via MaaS
 - `oc` CLI logged in as cluster-admin
@@ -136,7 +200,7 @@ A Python LangChain ReAct agent with a Gradio web UI.
 
 ---
 
-## Deploy: Step by Step
+## Deploy
 
 ### Quick Deploy (all components)
 
@@ -163,6 +227,7 @@ The script runs pre-flight checks (`oc` CLI installed, cluster login, namespace 
 3. `ticketing-mcp-server`
 4. `prometheus-mcp-server`
 5. `ai-agent`
+6. `ai-ticketing-agent`
 
 Each component's own `build-and-deploy.sh` is called under the hood, so the individual steps below are only needed if you want to deploy components manually.
 
@@ -200,157 +265,136 @@ Visit the Route URL to hit the endpoints manually.
 
 ```bash
 cd ticketing-system
-
-# Build and push the image to the OpenShift internal registry
-REGISTRY_HOST=$(oc get route default-route -n openshift-image-registry \
-  -o jsonpath='{.spec.host}')
-podman build --platform linux/amd64 \
-  -t "${REGISTRY_HOST}/coding-assistant/ticketing-system:latest" .
-podman push --tls-verify=false \
-  "${REGISTRY_HOST}/coding-assistant/ticketing-system:latest"
-
-# Deploy
-oc apply -f k8s/deployment.yaml
-oc apply -f k8s/route.yaml
+./build-and-deploy.sh
 
 # Verify
 oc get pods -n coding-assistant | grep ticketing
 oc get route ticketing-system -n coding-assistant
 ```
 
-Or use the all-in-one script:
-
-```bash
-cd ticketing-system
-./build-and-deploy.sh
-```
-
 Open the Route URL in a browser to see the incident dashboard.
 
-### Step 3 — Deploy the Ticketing MCP Server
+### Step 3 — Deploy the MCP Servers
 
 ```bash
+# Ticketing MCP Server
 cd ticketing-mcp-server
+./build-and-deploy.sh
+
+# Prometheus MCP Server
+cd ../prometheus-mcp-server
 ./build-and-deploy.sh
 ```
 
-The script auto-detects whether the MCP lifecycle operator is installed:
+The ticketing MCP server script auto-detects whether the MCP lifecycle operator is installed:
 - **RHOAI 3.4+** (operator present) — applies `k8s/mcpserver.yaml`; the operator creates the Deployment and Service and the server appears in the MCP catalog
 - **RHOAI 3.0–3.3** (no operator) — applies `k8s/deployment.yaml` + `k8s/route.yaml` as a manual Deployment
 
-In both cases the script also applies `k8s/mcp-catalog-entry.yaml` to register the server in the GenAI Playground.
+### Step 4 — Deploy the Agents
 
 ```bash
-# Verify
-oc get pods -n coding-assistant | grep ticketing-mcp
-# If using the MCPServer CRD:
-oc get mcpserver ticketing-mcp-server -n coding-assistant
-```
-
-### Step 4 — Deploy the AI Agent
-
-```bash
+# AI Troubleshooter Agent
 cd ai-agent
-
-# Deploy using the all-in-one script (reads maas_hostname from k8s/cluster-config.yaml)
 ./build-and-deploy.sh
+# or: ./build-and-deploy.sh <maas_hostname>
 
-# Or override the MaaS gateway hostname via CLI arg or env var
-./build-and-deploy.sh <maas_hostname>
-MAAS_HOSTNAME=<hostname> ./build-and-deploy.sh
+# AI Ticketing Agent
+cd ../ai-ticketing-agent
+./build-and-deploy.sh
 ```
-
-The script resolves `maas_hostname` with the following precedence: **CLI argument > `MAAS_HOSTNAME` env var > value in `k8s/cluster-config.yaml`**. It then applies RBAC, enables the external registry route if needed, builds and pushes the container image, creates the `ogx-stack-config` and `agent-knowledge` ConfigMaps, deploys the manifests, and waits for the rollout to complete.
 
 ```bash
-# Verify
-oc get pods -n coding-assistant | grep troubleshooter
-oc get route ocp-troubleshooter -n coding-assistant
+# Verify both agents
+oc get pods -n coding-assistant | grep -E 'troubleshooter|ticketing-agent'
+oc get route ocp-troubleshooter ai-ticketing-agent -n coding-assistant
 ```
-
-### Step 5 — Run the Demo
-
-1. Open the agent Route URL in a browser.
-2. Use one of the quick-start example prompts, e.g.:
-
-   > *"Troubleshoot the application in the demo-app namespace. Check pod health, look at Prometheus metrics for error rates and latency, retrieve logs, and give me a full diagnosis."*
-
-3. Watch the agent:
-   - Call `list_pods` or equivalent MCP tool → sees the running pod
-   - Call `query_prometheus` → sees 30% error rate on `/api/products`, 40% on `/api/inventory`
-   - Call `get_pod_logs` → sees NPE stack traces and "stock sync" error messages
-   - Output a structured diagnosis with root cause and recommended fix
 
 ---
 
 ## Demo Script (Suggested Walkthrough)
 
-### Scene 1 — Full Health Check
+### Act 1 — Proactive Detection (AI Troubleshooter)
 
-Prompt:
+Open the **AI Troubleshooter** Route URL in a browser.
+
+**Prompt:**
 ```
-Troubleshoot the application in the demo-app namespace. Check pod health, 
-look at Prometheus metrics for error rates and latency, retrieve logs, 
+Troubleshoot the application in the demo-app namespace. Check pod health,
+look at Prometheus metrics for error rates and latency, retrieve logs,
 and give me a full diagnosis.
 ```
 
-Expected diagnosis:
-- Pod is Running but generating errors
-- `/api/products`: ~30% HTTP 500 (NullPointerException in logs)
-- `/api/inventory`: ~40% HTTP 503 (stock sync errors)
-- `/api/orders`: p99 latency spike to ~3s (20% slow queries)
+Watch the agent:
+- Call MCP tools to list pods → sees the running pod
+- Query Prometheus → sees 30% error rate on `/api/products`, 40% on `/api/inventory`
+- Retrieve logs → sees NPE stack traces
+- **Create an incident** in the ticketing system with the full diagnosis
 
-### Scene 2 — Targeted Metric Query
+Open the ticketing system dashboard to see the newly created incident.
 
-Prompt:
-```
-What HTTP endpoints in demo-app are returning 5xx errors right now?
-Show me the error rates from Prometheus for the last 30 minutes.
-```
+### Act 2 — Human Reports an Incident
 
-### Scene 3 — Log Investigation
-
-Prompt:
-```
-Get the last 50 lines of logs from the buggy-demo-app pod in demo-app 
-and explain what errors you see.
-```
-
-### Scene 4 — Ticketing System API
-
-Create an incident manually via the REST API:
+A user (non-technical) notices something is wrong and opens a ticket manually:
 
 ```bash
 TICKETING_URL=$(oc get route ticketing-system -n coding-assistant \
   -o jsonpath='https://{.spec.host}')
 
-# Create an incident
 curl -s -X POST "${TICKETING_URL}/api/incidents" \
   -H "Content-Type: application/json" \
   -d '{
-    "short_description": "High 5xx error rate on /api/products",
-    "description": "30% of requests to /api/products return HTTP 500 due to NullPointerException in ProductResource.java",
-    "impact": 1,
+    "short_description": "buggy-demo-app is broken, nothing works",
+    "description": "Hi, I am not sure what is going on but the buggy-demo-app in the demo-app namespace seems to have problems. I tried to access it a few times and sometimes I get errors, sometimes it is super slow, and sometimes it just says service unavailable. I do not really know what to check or where to look. Can someone please have a look? It has been like this for a while and users are complaining. Thanks.",
+    "impact": 2,
     "urgency": 2,
     "category": "Application",
-    "caller_id": "ocp-troubleshooter"
+    "caller_id": "jsmith"
   }' | python3 -m json.tool
+```
 
-# List all incidents
-curl -s "${TICKETING_URL}/api/incidents" | python3 -m json.tool
+Note the `INC` number returned (e.g. `INC0000031`).
 
-# Open the dashboard in a browser
-open "${TICKETING_URL}"
+### Act 3 — AI-Assisted Triage (AI Ticketing Agent)
+
+Open the **AI Ticketing Agent** Route URL in a browser.
+
+**Prompt:**
+```
+Investigate incident INC0000031. Read the incident, troubleshoot the reported
+issue on OpenShift, and update the ticket with your findings.
+```
+
+Watch the agent:
+- **Read** the incident via `get_incident` → sees the vague human description
+- **Add a work note** — "Starting automated investigation"
+- **List pods** in `demo-app` → finds the running pod
+- **Query Prometheus** → identifies specific error rates per endpoint
+- **Retrieve logs** → finds NullPointerException stack traces
+- **Update the incident** description with a full investigation report (root cause, affected endpoints, recommended fix)
+- **Set state** to "In Progress"
+
+Go back to the ticketing system dashboard — the incident now has a detailed AI-generated diagnosis appended to the original human description, plus timestamped work notes showing the investigation trail.
+
+### Act 4 — Targeted Queries (either agent)
+
+```
+What HTTP endpoints in demo-app are returning 5xx errors right now?
+Show me the error rates from Prometheus for the last 30 minutes.
+```
+
+```
+Get the last 50 lines of logs from the buggy-demo-app pod in demo-app
+and explain what errors you see.
 ```
 
 ---
 
 ## Local Development
 
-### Agent
+### Agents
 
 ```bash
-cd ai-agent
+cd ai-agent  # or cd ai-ticketing-agent
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -384,66 +428,94 @@ uvicorn app:app --host 0.0.0.0 --port 8080 --reload
 
 ```
 ocp-troubleshooter-demo/
+├── build-and-deploy-all.sh              ← Master deploy script (all components)
+│
+│── Shared Components ──────────────────────────────────────────────────
+│
 ├── quarkus-buggy-app/
 │   ├── pom.xml
 │   ├── build-and-deploy.sh
 │   ├── src/main/java/com/demo/
-│   │   ├── ProductResource.java     ← 30% NPE → 500
-│   │   ├── OrderResource.java       ← 20% sleep → latency
-│   │   ├── InventoryResource.java   ← 40% → 503
-│   │   └── TrafficGenerator.java    ← background load
-│   ├── src/main/resources/
-│   │   └── application.properties
+│   │   ├── ProductResource.java          ← 30% NPE → 500
+│   │   ├── OrderResource.java            ← 20% sleep → latency
+│   │   ├── InventoryResource.java        ← 40% → 503
+│   │   └── TrafficGenerator.java         ← background load
 │   └── k8s/
 │       ├── namespace.yaml
-│       ├── deployment.yaml          ← Deployment + Service + Route
-│       └── service-monitor.yaml     ← Prometheus scraping
+│       ├── deployment.yaml               ← Deployment + Service + Route
+│       └── service-monitor.yaml          ← Prometheus scraping
+│
 ├── ticketing-system/
-│   ├── app.py                       ← FastAPI ServiceNow simulator
-│   ├── requirements.txt
+│   ├── app.py                            ← FastAPI ServiceNow simulator
 │   ├── Dockerfile
 │   ├── build-and-deploy.sh
 │   └── k8s/
-│       ├── deployment.yaml          ← Deployment + PVC + Service
-│       └── route.yaml               ← External route (dashboard)
+│       ├── deployment.yaml               ← Deployment + PVC + Service
+│       └── route.yaml                    ← External route (dashboard)
+│
 ├── ticketing-mcp-server/
-│   ├── server.py                    ← FastMCP server (MCP catalog)
-│   ├── requirements.txt
+│   ├── server.py                         ← FastMCP server (MCP catalog)
 │   ├── Dockerfile
 │   ├── build-and-deploy.sh
 │   └── k8s/
-│       ├── mcpserver.yaml           ← MCPServer CR (RHOAI 3.4+, operator-managed)
-│       ├── mcp-catalog-entry.yaml   ← GenAI Playground registration (RHOAI 3.0+)
-│       ├── deployment.yaml          ← Manual fallback Deployment + Service
-│       └── route.yaml               ← Optional external route
-└── ai-agent/
-    ├── app.py                       ← Gradio web UI
-    ├── agent.py                     ← LangChain ReAct agent
-    ├── tools/
-    │   ├── openshift_mcp.py         ← MCP client (langchain-mcp-adapters)
-    │   └── prometheus.py            ← PromQL tools (Thanos)
-    ├── requirements.txt
+│       ├── mcpserver.yaml                ← MCPServer CR (RHOAI 3.4+)
+│       ├── mcp-catalog-entry.yaml        ← GenAI Playground registration
+│       ├── deployment.yaml               ← Manual fallback Deployment
+│       └── route.yaml                    ← Optional external route
+│
+├── prometheus-mcp-server/
+│   ├── server.py                         ← FastMCP server (PromQL tools)
+│   ├── Dockerfile
+│   ├── build-and-deploy.sh
+│   └── k8s/
+│       ├── mcpserver.yaml                ← MCPServer CR (RHOAI 3.4+)
+│       └── deployment.yaml               ← Manual fallback Deployment
+│
+│── Agents ─────────────────────────────────────────────────────────────
+│
+├── ai-agent/                              ← AI Troubleshooter (proactive)
+│   ├── agent.py                           ← OGX Responses API agent
+│   ├── app.py                             ← Gradio web UI
+│   ├── knowledge.md                       ← App knowledge base
+│   ├── Dockerfile
+│   ├── start.sh                           ← OGX sidecar wait + launch
+│   ├── build-and-deploy.sh
+│   ├── ogx/
+│   │   └── stack_run_config.yaml          ← OGX + Nemotron config
+│   └── k8s/
+│       ├── rbac.yaml                      ← ServiceAccount + monitoring RBAC (shared)
+│       ├── cluster-config.yaml            ← MaaS hostname ConfigMap
+│       ├── deployment.yaml                ← Deployment + Service
+│       └── route.yaml                     ← External route
+│
+└── ai-ticketing-agent/                    ← AI Ticketing Agent (reactive)
+    ├── agent.py                           ← OGX Responses API agent
+    ├── app.py                             ← Gradio web UI
+    ├── knowledge.md                       ← App knowledge base
     ├── Dockerfile
+    ├── start.sh                           ← OGX sidecar wait + launch
     ├── build-and-deploy.sh
+    ├── ogx/
+    │   └── stack_run_config.yaml          ← OGX + Nemotron config
     └── k8s/
-        ├── rbac.yaml                ← ServiceAccount + monitoring RBAC
-        ├── deployment.yaml          ← Deployment + Service
-        └── route.yaml               ← External route
+        ├── deployment.yaml                ← Deployment + Service
+        └── route.yaml                     ← External route
 ```
 
 ---
 
-## Key Configuration (Environment Variables)
+## Key Configuration
+
+### Environment Variables (both agents)
 
 | Variable | Default | Description |
 |---|---|---|
+| `OGX_BASE_URL` | `http://localhost:8321` | OGX sidecar endpoint (within the pod) |
 | `OCP_MCP_URL` | `http://openshift-mcp.coding-assistant.svc:8000/mcp` | OpenShift MCP server URL |
-| `THANOS_URL` | `https://thanos-querier.openshift-monitoring.svc:9091` | Thanos Querier base URL |
-| `NEMOTRON_BASE_URL` | `https://maas.apps.../maas/nemotron-3-nano-30b-a3b/v1` | Nemotron API base URL |
-| `NEMOTRON_MODEL` | `nemotron-3-nano-30b-a3b` | Model name |
-| `NEMOTRON_API_KEY` | `fake` | API key (MaaS uses bearer token auth internally) |
-| `PROMETHEUS_TOKEN` | *(SA token from mount)* | Override bearer token for Prometheus |
+| `PROMETHEUS_MCP_URL` | `http://prometheus-mcp-server.coding-assistant.svc:8080/mcp` | Prometheus MCP server URL |
 | `TICKETING_MCP_URL` | `http://ticketing-mcp-server.coding-assistant.svc:8080/mcp` | Ticketing MCP server URL |
+| `NEMOTRON_MODEL` | `nemotron/nemotron-3-nano-30b-a3b` | Model identifier for the OGX Responses API |
+| `KNOWLEDGE_FILE` | `/etc/agent-knowledge/knowledge.md` | Mounted knowledge base |
 | `GRADIO_PORT` | `7860` | Gradio server port |
 
 ### Token Budget and Context Window Tuning
@@ -454,14 +526,12 @@ The agent's agentic loop accumulates every tool result (pod listings, Prometheus
 
 | Parameter | Location | Default | Purpose |
 |---|---|---|---|
-| `MAX_INFER_ITERS` | `ai-agent/agent.py` (env var) | `15` | Maximum number of ReAct iterations (tool-call rounds) the agent can perform. Each iteration adds tool input + output to the context. Lower values reduce the risk of hitting the context limit but may prevent the agent from completing complex diagnoses. |
-| `VLLM_MAX_TOKENS` | `ai-agent/ogx/stack_run_config.yaml` (env var) | `4096` | Maximum output tokens per LLM inference call. Limits how long each individual model response can be. A lower value reserves more of the context window for tool results. |
-| `AGENT_TIMEOUT_SECONDS` | `ai-agent/agent.py` (env var) | `300` | Hard timeout (seconds) for the entire agent run. Acts as a safety net — if the agent is stuck in a loop, it will be stopped after this duration. |
-| Log line cap | `ai-agent/agent.py` (system prompt) | `50 lines` | The system prompt instructs the agent to retrieve only the last 50 lines of logs per pod. Larger values produce more context for diagnosis but consume more tokens. |
-| Prometheus query intervals | `ai-agent/agent.py` (system prompt) | `5m` preferred | The system prompt instructs the agent to prefer short intervals (`[5m]`) for range queries instead of longer windows, reducing the volume of time-series data returned. |
-| `list_incidents` restriction | `ai-agent/agent.py` (system prompt) | Disabled | The agent is explicitly told not to call `list_incidents` to avoid wasting tokens on listing existing tickets. In a production system you may want to re-enable this to prevent duplicate incidents. |
-| Redundant tool call prevention | `ai-agent/agent.py` (system prompt) | Enabled | The system prompt includes a "Token budget" section that tells the agent to avoid calling the same tool twice, skip healthy pods, and stop collecting data once it has enough evidence. |
-| `list_incidents` default limit | `ticketing-mcp-server/server.py` | `20` | When `list_incidents` is called, it returns at most 20 incidents by default. If re-enabled, consider lowering this for token-constrained models. |
+| `MAX_INFER_ITERS` | `agent.py` (env var) | `15` | Maximum number of ReAct iterations (tool-call rounds) the agent can perform. Each iteration adds tool input + output to the context. Lower values reduce the risk of hitting the context limit but may prevent the agent from completing complex diagnoses. |
+| `VLLM_MAX_TOKENS` | `ogx/stack_run_config.yaml` (env var) | `4096` | Maximum output tokens per LLM inference call. Limits how long each individual model response can be. A lower value reserves more of the context window for tool results. |
+| `AGENT_TIMEOUT_SECONDS` | `agent.py` (env var) | `300` | Hard timeout (seconds) for the entire agent run. Acts as a safety net — if the agent is stuck in a loop, it will be stopped after this duration. |
+| Log line cap | `agent.py` (system prompt) | `50 lines` | The system prompt instructs the agent to retrieve only the last 50 lines of logs per pod. Larger values produce more context for diagnosis but consume more tokens. |
+| Prometheus query intervals | `agent.py` (system prompt) | `5m` preferred | The system prompt instructs the agent to prefer short intervals (`[5m]`) for range queries instead of longer windows, reducing the volume of time-series data returned. |
+| Redundant tool call prevention | `agent.py` (system prompt) | Enabled | The system prompt includes a "Token budget" section that tells the agent to avoid calling the same tool twice, skip healthy pods, and stop collecting data once it has enough evidence. |
 
 ### Ticketing System
 
