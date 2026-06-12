@@ -1,0 +1,18 @@
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ai-ticketing-agent
+  namespace: coding-assistant
+  labels:
+    app: ai-ticketing-agent
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+spec:
+  to:
+    kind: Service
+    name: ai-ticketing-agent
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

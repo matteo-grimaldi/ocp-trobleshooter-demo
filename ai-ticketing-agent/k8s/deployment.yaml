@@ -1,0 +1,173 @@
+---
+# Note: the ogx-ticketing-agent-config ConfigMap is managed by build-and-deploy.sh
+# via: oc create configmap ogx-ticketing-agent-config --from-file=stack_run_config.yaml=ogx/stack_run_config.yaml
+# Do NOT include it inline here to avoid YAML-within-YAML parsing issues.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-ticketing-agent
+  namespace: coding-assistant
+  labels:
+    app: ai-ticketing-agent
+    app.kubernetes.io/name: ai-ticketing-agent
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-ticketing-agent
+  template:
+    metadata:
+      labels:
+        app: ai-ticketing-agent
+        app.kubernetes.io/name: ai-ticketing-agent
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      serviceAccountName: ocp-troubleshooter-sa
+      containers:
+        # ── OGX sidecar ──────────────────────────────────────────────────────
+        - name: ogx-server
+          image: ogxai/distribution-starter:latest
+          imagePullPolicy: Always
+          command:
+            - uvicorn
+            - ogx.core.server.server:create_app
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8321"
+            - --factory
+          ports:
+            - containerPort: 8321
+              name: ogx-http
+              protocol: TCP
+          env:
+            - name: OGX_CONFIG
+              value: "/etc/ogx/stack_run_config.yaml"
+            - name: OGX_LOGGING
+              value: "all=INFO"
+            - name: SQLITE_STORE_DIR
+              value: "/tmp/ogx"
+            - name: MAAS_HOSTNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: maas_hostname
+            - name: VLLM_URL
+              value: "https://$(MAAS_HOSTNAME)/maas/nemotron-3-nano-30b-a3b/v1"
+            - name: VLLM_MAX_TOKENS
+              value: "8192"
+            - name: VLLM_TLS_VERIFY
+              value: "false"
+            - name: VLLM_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: maas-api-keys
+                  key: MAAS_API_KEY_NEMOTRON
+            - name: INFERENCE_MODEL
+              value: "nemotron-3-nano-30b-a3b"
+          volumeMounts:
+            - name: ogx-config
+              mountPath: /etc/ogx
+            - name: ogx-data
+              mountPath: /tmp/ogx
+          livenessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8321
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8321
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+        # ── Gradio UI ────────────────────────────────────────────────────────
+        - name: ai-ticketing-agent
+          image: image-registry.openshift-image-registry.svc:5000/coding-assistant/ai-ticketing-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 7860
+              name: http
+              protocol: TCP
+          env:
+            - name: GRADIO_PORT
+              value: "7860"
+            - name: GRADIO_ANALYTICS_ENABLED
+              value: "False"
+            - name: OGX_BASE_URL
+              value: "http://localhost:8321"
+            - name: OCP_MCP_URL
+              value: "http://openshift-mcp.coding-assistant.svc:8000/mcp"
+            - name: PROMETHEUS_MCP_URL
+              value: "http://prometheus-mcp-server.coding-assistant.svc:8080/mcp"
+            - name: TICKETING_MCP_URL
+              value: "http://ticketing-mcp-server.coding-assistant.svc:8080/mcp"
+            - name: NEMOTRON_MODEL
+              value: "nemotron/nemotron-3-nano-30b-a3b"
+            - name: KNOWLEDGE_FILE
+              value: "/etc/agent-knowledge/knowledge.md"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 7860
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7860
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: agent-knowledge
+              mountPath: /etc/agent-knowledge
+              readOnly: true
+      volumes:
+        - name: ogx-config
+          configMap:
+            name: ogx-ticketing-agent-config
+        - name: ogx-data
+          emptyDir: {}
+        - name: agent-knowledge
+          configMap:
+            name: ticketing-agent-knowledge
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-ticketing-agent
+  namespace: coding-assistant
+  labels:
+    app: ai-ticketing-agent
+spec:
+  selector:
+    app: ai-ticketing-agent
+  ports:
+    - name: http
+      port: 7860
+      targetPort: 7860
+      protocol: TCP
