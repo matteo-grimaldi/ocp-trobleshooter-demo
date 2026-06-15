@@ -585,6 +585,20 @@ The agent's agentic loop accumulates every tool result (pod listings, Prometheus
 | Prometheus query intervals | `agent.py` (system prompt) | `5m` preferred | The system prompt instructs the agent to prefer short intervals (`[5m]`) for range queries instead of longer windows, reducing the volume of time-series data returned. |
 | Redundant tool call prevention | `agent.py` (system prompt) | Enabled | The system prompt includes a "Token budget" section that tells the agent to avoid calling the same tool twice, skip healthy pods, and stop collecting data once it has enough evidence. |
 
+---
+
+## Known Issues
+
+### OpenShift MCP `pods_log` returns opaque errors for terminated containers
+
+When the agent calls `pods_log` on a pod whose container has terminated, the OpenShift MCP server returns `Error (code 1): None` instead of the actual Kubernetes error message (`container "X" in pod "Y" not found`). The agent receives no actionable context about the failure. This happens because the `kubernetes-mcp-server` does not propagate the upstream Kubernetes API error in the MCP response.
+
+The issue is intermittent — it only affects pods with terminated containers (e.g., exit code 143 / SIGTERM). Calls to running pods succeed normally.
+
+See [openshift-mcp-pods-log-error-handling.md](openshift-mcp-pods-log-error-handling.md) for full reproduction steps and proposed improvements.
+
+---
+
 ### Ticketing System
 
 | Variable | Default | Description |
