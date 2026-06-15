@@ -1,0 +1,93 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: working-demo-app
+  namespace: demo-app
+  labels:
+    app: working-demo-app
+    app.kubernetes.io/part-of: ocp-troubleshooter-demo
+    app.kubernetes.io/name: working-demo-app
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: working-demo-app
+  template:
+    metadata:
+      labels:
+        app: working-demo-app
+        app.kubernetes.io/name: working-demo-app
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      containers:
+        - name: working-demo-app
+          image: image-registry.openshift-image-registry.svc:5000/demo-app/working-demo-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: QUARKUS_HTTP_PORT
+              value: "8080"
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: working-demo-app
+  namespace: demo-app
+  labels:
+    app: working-demo-app
+    app.kubernetes.io/name: working-demo-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/q/metrics"
+    prometheus.io/port: "8080"
+spec:
+  selector:
+    app: working-demo-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: working-demo-app
+  namespace: demo-app
+  labels:
+    app: working-demo-app
+spec:
+  to:
+    kind: Service
+    name: working-demo-app
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

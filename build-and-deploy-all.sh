@@ -11,10 +11,11 @@
 # Components (in dependency order):
 #   1. ticketing-system        — backend REST API (no deps)
 #   2. quarkus-buggy-app       — demo app to troubleshoot (no deps)
-#   3. ticketing-mcp-server    — MCP server wrapping ticketing-system
-#   4. prometheus-mcp-server   — MCP server wrapping Thanos Querier
-#   5. ai-agent                — Gradio UI + OGX (depends on MCP servers)
-#   6. ai-ticketing-agent      — Incident investigator agent (depends on MCP servers)
+#   3. quarkus-working-app     — healthy demo app, no faults (no deps)
+#   4. ticketing-mcp-server    — MCP server wrapping ticketing-system
+#   5. prometheus-mcp-server   — MCP server wrapping Thanos Querier
+#   6. ai-agent                — Gradio UI + OGX (depends on MCP servers)
+#   7. ai-ticketing-agent      — Incident investigator agent (depends on MCP servers)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,6 +114,7 @@ fi
 COMPONENTS=(
   ticketing-system
   quarkus-buggy-app
+  quarkus-working-app
   ticketing-mcp-server
   prometheus-mcp-server
   ai-agent

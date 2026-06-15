@@ -17,7 +17,8 @@ Both agents use the same LLM (**Nemotron 3 Nano 30B** via MaaS), the same MCP to
 The purpose of this demo is to demonstrate how to use AI agents and MCP Servers deployed on OpenShift AI to troubleshoot applications issues.
 In this simplified scenario there will be the following components: 
 1. **The buggy app** generates continuous errors (HTTP 500s, 503s, high latency).
-2. **AI Troubleshooter** proactively detects and diagnoses these issues, opening incidents automatically.
+2. **The working app** runs the same endpoints without any faults, serving as a healthy baseline.
+3. **AI Troubleshooter** proactively detects and diagnoses these issues, opening incidents automatically.
 3. **AI Ticketing Agent** picks up the human-created incident, investigates using real cluster data, and enriches the ticket with a full diagnosis and 
 recommended fix.
 4. **Ticketing System** persists opened tickets and allows creating new tickets or updating existing ones
@@ -100,6 +101,19 @@ A Quarkus 3 REST microservice with intentional, randomly-triggered failures:
 - Exposes `/q/metrics` (Micrometer + Prometheus format)
 - Exposes `/q/health` (SmallRye Health liveness + readiness)
 - Includes a `TrafficGenerator` that calls all endpoints every 5 seconds to produce continuous metrics
+
+### Quarkus Working App (`quarkus-working-app/`)
+
+A healthy version of the buggy app with the same three REST endpoints, but **no injected faults**. All requests return HTTP 200 with normal latency. Logs contain only INFO-level messages. Useful as a baseline to contrast with the buggy app — the AI agents will find nothing to investigate here.
+
+| Endpoint | Behaviour | HTTP Code |
+|---|---|---|
+| `GET /api/products` | Returns product catalog | 200 |
+| `GET /api/orders` | Returns orders (no delay) | 200 |
+| `GET /api/inventory` | Returns stock levels | 200 |
+
+- Same Micrometer metrics, SmallRye Health, and `TrafficGenerator` as the buggy app
+- Deployed as `working-demo-app` in the `demo-app` namespace
 
 ### Ticketing System (`ticketing-system/`)
 
@@ -224,10 +238,11 @@ The script runs pre-flight checks (`oc` CLI installed, cluster login, namespace 
 
 1. `ticketing-system`
 2. `quarkus-buggy-app`
-3. `ticketing-mcp-server`
-4. `prometheus-mcp-server`
-5. `ai-agent`
-6. `ai-ticketing-agent`
+3. `quarkus-working-app`
+4. `ticketing-mcp-server`
+5. `prometheus-mcp-server`
+6. `ai-agent`
+7. `ai-ticketing-agent`
 
 Each component's own `build-and-deploy.sh` is called under the hood, so the individual steps below are only needed if you want to deploy components manually.
 
@@ -261,7 +276,31 @@ oc get route buggy-demo-app -n demo-app
 Wait ~30 seconds for the app to start generating errors.  
 Visit the Route URL to hit the endpoints manually.
 
-### Step 2 — Deploy the Ticketing System
+### Step 2 — Deploy the Quarkus Working App
+
+```bash
+cd quarkus-working-app
+
+# Build and push the image to the OpenShift internal registry
+oc registry login --skip-check
+./mvnw package \
+  -Dquarkus.container-image.build=true \
+  -Dquarkus.container-image.push=true \
+  -Dquarkus.container-image.insecure=true \
+  -DskipTests
+
+# Deploy
+oc apply -f k8s/deployment.yaml
+oc apply -f k8s/service-monitor.yaml
+
+# Verify
+oc get pods -n demo-app
+oc get route working-demo-app -n demo-app
+```
+
+This app produces only healthy metrics — no errors, no latency spikes.
+
+### Step 3 — Deploy the Ticketing System
 
 ```bash
 cd ticketing-system
@@ -274,7 +313,7 @@ oc get route ticketing-system -n coding-assistant
 
 Open the Route URL in a browser to see the incident dashboard.
 
-### Step 3 — Deploy the MCP Servers
+### Step 4 — Deploy the MCP Servers
 
 ```bash
 # Ticketing MCP Server
@@ -290,7 +329,7 @@ The ticketing MCP server script auto-detects whether the MCP lifecycle operator 
 - **RHOAI 3.4+** (operator present) — applies `k8s/mcpserver.yaml`; the operator creates the Deployment and Service and the server appears in the MCP catalog
 - **RHOAI 3.0–3.3** (no operator) — applies `k8s/deployment.yaml` + `k8s/route.yaml` as a manual Deployment
 
-### Step 4 — Deploy the Agents
+### Step 5 — Deploy the Agents
 
 ```bash
 # AI Troubleshooter Agent
@@ -439,6 +478,19 @@ ocp-troubleshooter-demo/
 │   │   ├── ProductResource.java          ← 30% NPE → 500
 │   │   ├── OrderResource.java            ← 20% sleep → latency
 │   │   ├── InventoryResource.java        ← 40% → 503
+│   │   └── TrafficGenerator.java         ← background load
+│   └── k8s/
+│       ├── namespace.yaml
+│       ├── deployment.yaml               ← Deployment + Service + Route
+│       └── service-monitor.yaml          ← Prometheus scraping
+│
+├── quarkus-working-app/
+│   ├── pom.xml
+│   ├── build-and-deploy.sh
+│   ├── src/main/java/com/demo/
+│   │   ├── ProductResource.java          ← Always 200
+│   │   ├── OrderResource.java            ← Always 200, no delay
+│   │   ├── InventoryResource.java        ← Always 200
 │   │   └── TrafficGenerator.java         ← background load
 │   └── k8s/
 │       ├── namespace.yaml
