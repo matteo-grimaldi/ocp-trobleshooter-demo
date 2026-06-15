@@ -24,6 +24,7 @@ spec:
         app.kubernetes.io/name: prometheus-mcp-server
         app.kubernetes.io/version: "1.0.0"
     spec:
+      serviceAccountName: ocp-troubleshooter-sa
       containers:
         - name: prometheus-mcp-server
           image: image-registry.openshift-image-registry.svc:5000/coding-assistant/prometheus-mcp-server:latest
