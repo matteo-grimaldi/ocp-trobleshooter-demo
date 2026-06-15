@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 EXAMPLE_PROMPTS = [
     "Investigate incident INC0000001. Read the incident, troubleshoot the reported issue on OpenShift, and update the ticket with your findings.",
-    "Analyze incident INC0000002. Check pod health and Prometheus metrics for the application mentioned in the ticket, then update it with a diagnosis.",
     "Look at incident INC0000003 and determine if the issue is still happening. Update the ticket with current cluster state.",
     "List all open incidents and pick the highest priority one to investigate.",
 ]

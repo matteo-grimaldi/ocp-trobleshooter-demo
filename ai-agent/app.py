@@ -27,10 +27,9 @@ logger = logging.getLogger(__name__)
 
 # ── Quick-start prompts shown as example buttons ────────────────────────────
 EXAMPLE_PROMPTS = [
-    "Troubleshoot the application in the demo-app namespace. Check pod health, look at Prometheus metrics for error rates and latency, retrieve logs, and give me a full diagnosis.",
+    "Troubleshoot the application buggy-demo-app in the demo-app namespace. Check pod health, look at Prometheus metrics for error rates and latency, retrieve logs, and give me a full diagnosis.",
+    "Troubleshoot the application working-demo-app in the demo-app namespace. Check pod health, look at Prometheus metrics for error rates and latency, retrieve logs, and give me a full diagnosis.",
     "What HTTP endpoints in demo-app are returning 5xx errors? Show me the error rates from Prometheus.",
-    "Are there any pods in CrashLoopBackOff or with high restart counts in demo-app?",
-    "Show me the p99 latency for all endpoints in demo-app over the last 30 minutes.",
     "What do the recent Kubernetes events say about the buggy-demo-app deployment?",
 ]
 
