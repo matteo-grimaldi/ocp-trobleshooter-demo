@@ -13,7 +13,7 @@ POD=$(oc get pods -n "${NAMESPACE}" -l app=ticketing-system \
 echo "Found ticketing-system pod: ${POD}"
 
 COUNT=$(oc exec -n "${NAMESPACE}" "${POD}" -- \
-  sqlite3 "${DB_PATH}" "SELECT COUNT(*) FROM incidents;" 2>/dev/null) || {
+  python3 -c "import sqlite3; print(sqlite3.connect('${DB_PATH}').execute('SELECT COUNT(*) FROM incidents').fetchone()[0])") || {
   echo "Error: could not query the database on pod '${POD}'"
   exit 1
 }
@@ -26,6 +26,13 @@ fi
 echo "Deleting ${COUNT} ticket(s)..."
 
 oc exec -n "${NAMESPACE}" "${POD}" -- \
-  sqlite3 "${DB_PATH}" "DELETE FROM work_notes; DELETE FROM incidents;"
+  python3 -c "
+import sqlite3
+conn = sqlite3.connect('${DB_PATH}')
+conn.execute('DELETE FROM work_notes')
+conn.execute('DELETE FROM incidents')
+conn.commit()
+conn.close()
+"
 
 echo "Done. All tickets have been deleted."
