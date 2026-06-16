@@ -65,6 +65,9 @@ oc create configmap ticketing-agent-knowledge \
 oc apply -f k8s/deployment.yaml
 oc apply -f k8s/route.yaml
 
+echo "=== Restarting deployment ==="
+oc rollout restart deployment/${APP} -n ${NAMESPACE}
+
 echo "=== Waiting for rollout ==="
 oc rollout status deployment/${APP} -n ${NAMESPACE} --timeout=180s
 
