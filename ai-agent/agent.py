@@ -119,7 +119,7 @@ If a tool call fails, note the failure and continue with available information.
 
 
 AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "300"))
-MAX_INFER_ITERS = int(os.getenv("MAX_INFER_ITERS", "15"))
+MAX_INFER_ITERS = int(os.getenv("MAX_INFER_ITERS", "18"))
 
 
 async def run_agent(user_message: str) -> AsyncIterator[str]:

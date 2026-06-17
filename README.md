@@ -578,7 +578,7 @@ The agent's agentic loop accumulates every tool result (pod listings, Prometheus
 
 | Parameter | Location | Default | Purpose |
 |---|---|---|---|
-| `MAX_INFER_ITERS` | `agent.py` (env var) | `15` | Maximum number of ReAct iterations (tool-call rounds) the agent can perform. Each iteration adds tool input + output to the context. Lower values reduce the risk of hitting the context limit but may prevent the agent from completing complex diagnoses. |
+| `MAX_INFER_ITERS` | `agent.py` (env var) | `18` | Maximum number of ReAct iterations (tool-call rounds) the agent can perform. Each iteration adds tool input + output to the context. Lower values reduce the risk of hitting the context limit but may prevent the agent from completing complex diagnoses. |
 | `VLLM_MAX_TOKENS` | `ogx/stack_run_config.yaml` (env var) | `4096` | Maximum output tokens per LLM inference call. Limits how long each individual model response can be. A lower value reserves more of the context window for tool results. |
 | `AGENT_TIMEOUT_SECONDS` | `agent.py` (env var) | `300` | Hard timeout (seconds) for the entire agent run. Acts as a safety net — if the agent is stuck in a loop, it will be stopped after this duration. |
 | Log line cap | `agent.py` (system prompt) | `50 lines` | The system prompt instructs the agent to retrieve only the last 50 lines of logs per pod. Larger values produce more context for diagnosis but consume more tokens. |
