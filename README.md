@@ -603,6 +603,17 @@ When the model calls a tool name that is not registered in any connected MCP ser
 
 This can happen when the model invents plausible tool names (e.g. `services_list`) or when the system prompt lists a tool name that doesn't match the MCP server's actual registry. Both agents mitigate this with explicit tool-name lists in the system prompt and a "do not invent tool names" instruction.
 
+### MaaS endpoint cold starts cause agent timeouts
+
+The Nemotron MaaS endpoint (`maas.apps.cluster-*.opentlc.com`) exhibits cold-start behavior: the first inference request after an idle period hangs for >60 seconds while the model is loaded onto the GPU, then times out against OGX's default 60-second HTTP read timeout. OGX retries immediately and the retry succeeds in 5-7 seconds, but each timeout-retry cycle burns ~60 seconds of the agent's 300-second budget. With 3 retries in a single run, 180 seconds (60% of the budget) are wasted on timeouts, leaving insufficient time for the agent to produce its final response — even though all tool calls and the incident ticket complete successfully.
+
+**TODO:**
+
+- [ ] **Increase `AGENT_TIMEOUT_SECONDS`** — bump from 300 to 600 in the deployment env vars. Quickest mitigation; gives the agent enough headroom to absorb retry delays.
+- [ ] **Configure OGX vLLM provider timeout** — add a `request_timeout` to the `remote::vllm` provider in `ogx/stack_run_config.yaml` (e.g., 120-180s) so the first request can survive a cold start without triggering a retry.
+- [ ] **Keep the model warm** — add a lightweight periodic inference request (sidecar CronJob or init probe) so the model stays loaded between agent runs. The current `GET /v1/models` health check only hits the vLLM API, not the model itself.
+- [ ] **Check MaaS autoscaling policy** — if the nemotron endpoint supports `minReplicas: 1` or an idle-timeout configuration, prevent scale-to-zero entirely to eliminate cold starts.
+
 ---
 
 ### Ticketing System
