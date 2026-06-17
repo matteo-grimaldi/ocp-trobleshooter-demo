@@ -136,6 +136,7 @@ async def run_agent(user_message: str) -> AsyncIterator[str]:
     client = AsyncOgxClient(
         base_url=OGX_BASE_URL,
         api_key="local",
+        max_retries=5,
         timeout=httpx.Timeout(connect=30.0, read=AGENT_TIMEOUT_SECONDS, write=30.0, pool=30.0),
     )
 
