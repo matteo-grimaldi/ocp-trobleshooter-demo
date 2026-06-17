@@ -580,7 +580,7 @@ The agent's agentic loop accumulates every tool result (pod listings, Prometheus
 |---|---|---|---|
 | `MAX_INFER_ITERS` | `agent.py` (env var) | `18` | Maximum number of ReAct iterations (tool-call rounds) the agent can perform. Each iteration adds tool input + output to the context. Lower values reduce the risk of hitting the context limit but may prevent the agent from completing complex diagnoses. |
 | `VLLM_MAX_TOKENS` | `ogx/stack_run_config.yaml` (env var) | `4096` | Maximum output tokens per LLM inference call. Limits how long each individual model response can be. A lower value reserves more of the context window for tool results. |
-| `AGENT_TIMEOUT_SECONDS` | `agent.py` (env var) | `300` | Hard timeout (seconds) for the entire agent run. Acts as a safety net — if the agent is stuck in a loop, it will be stopped after this duration. |
+| `AGENT_TIMEOUT_SECONDS` | `agent.py` (env var) | `600` | Hard timeout (seconds) for the entire agent run. Acts as a safety net — if the agent is stuck in a loop, it will be stopped after this duration. |
 | Log line cap | `agent.py` (system prompt) | `50 lines` | The system prompt instructs the agent to retrieve only the last 50 lines of logs per pod. Larger values produce more context for diagnosis but consume more tokens. |
 | Prometheus query intervals | `agent.py` (system prompt) | `5m` preferred | The system prompt instructs the agent to prefer short intervals (`[5m]`) for range queries instead of longer windows, reducing the volume of time-series data returned. |
 | Redundant tool call prevention | `agent.py` (system prompt) | Enabled | The system prompt includes a "Token budget" section that tells the agent to avoid calling the same tool twice, skip healthy pods, and stop collecting data once it has enough evidence. |
@@ -609,7 +609,7 @@ The Nemotron MaaS endpoint (`maas.apps.cluster-*.opentlc.com`) exhibits cold-sta
 
 **TODO:**
 
-- [ ] **Increase `AGENT_TIMEOUT_SECONDS`** — bump from 300 to 600 in the deployment env vars. Quickest mitigation; gives the agent enough headroom to absorb retry delays.
+- [x] **Increase `AGENT_TIMEOUT_SECONDS`** — bumped from 300 to 600 in `agent.py` default. Gives the agent enough headroom to absorb retry delays.
 - [ ] **Configure OGX vLLM provider timeout** — add a `request_timeout` to the `remote::vllm` provider in `ogx/stack_run_config.yaml` (e.g., 120-180s) so the first request can survive a cold start without triggering a retry.
 - [ ] **Keep the model warm** — add a lightweight periodic inference request (sidecar CronJob or init probe) so the model stays loaded between agent runs. The current `GET /v1/models` health check only hits the vLLM API, not the model itself.
 - [ ] **Check MaaS autoscaling policy** — if the nemotron endpoint supports `minReplicas: 1` or an idle-timeout configuration, prevent scale-to-zero entirely to eliminate cold starts.

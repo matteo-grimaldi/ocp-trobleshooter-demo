@@ -68,6 +68,8 @@ spec:
                   key: MAAS_API_KEY_NEMOTRON
             - name: INFERENCE_MODEL
               value: "nemotron-3-nano-30b-a3b"
+            - name: OPENAI_MAX_RETRIES
+              value: "8"
           volumeMounts:
             - name: ogx-config
               mountPath: /etc/ogx

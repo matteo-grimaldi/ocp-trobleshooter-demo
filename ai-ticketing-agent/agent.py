@@ -134,7 +134,7 @@ If a tool call fails, note the failure and continue with available information.
 """
 
 
-AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "300"))
+AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "600"))
 MAX_INFER_ITERS = int(os.getenv("MAX_INFER_ITERS", "18"))
 
 
