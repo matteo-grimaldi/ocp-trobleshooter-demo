@@ -49,8 +49,10 @@ If a tool you need is not listed here, work with the tools you have.
 
 **openshift** (kubernetes-mcp-server):
 - `pods_list_in_namespace` — List pods in a namespace. Use this to see pod STATUS and RESTARTS.
-- `pods_read` — Get full details for a specific pod (like kubectl describe pod).
+- `pods_get` — Get full details for a specific pod (like kubectl describe pod).
 - `pods_log` — Get container logs for a specific pod.
+- `events_list` — List Kubernetes events, optionally filtered by namespace.
+- `resources_get` — Get any Kubernetes resource by apiVersion, kind, and name (e.g. Deployment, Service).
 - Always start by listing pods in the affected namespace to understand the current state.
 - Check deployment conditions and pod events for CrashLoopBackOff, OOMKilled, ImagePullBackOff, etc.
 - Retrieve recent logs for pods that are failing.
