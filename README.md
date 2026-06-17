@@ -595,7 +595,13 @@ When the agent calls `pods_log` on a pod whose container has terminated, the Ope
 
 The issue is intermittent — it only affects pods with terminated containers (e.g., exit code 143 / SIGTERM). Calls to running pods succeed normally.
 
-See [openshift-mcp-pods-log-error-handling.md](openshift-mcp-pods-log-error-handling.md) for full reproduction steps and proposed improvements.
+Both agents mitigate this with explicit tool-name lists in the system prompt and instructions to only call tools by their exact registered names.
+
+### OGX silently exits inference loop on unrecognized tool calls
+
+When the model calls a tool name that is not registered in any connected MCP server (either hallucinated by the model or a legitimate tool not in the registry), OGX classifies it as a "client-side function call" and exits the inference loop without returning an error to the model or the caller. The agent run terminates silently — from the user's perspective the agent simply stops responding mid-investigation.
+
+This can happen when the model invents plausible tool names (e.g. `services_list`) or when the system prompt lists a tool name that doesn't match the MCP server's actual registry. Both agents mitigate this with explicit tool-name lists in the system prompt and a "do not invent tool names" instruction.
 
 ---
 
